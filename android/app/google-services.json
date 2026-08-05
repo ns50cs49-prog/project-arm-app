@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "88186335632",
+    "project_id": "project-arm-app",
+    "storage_bucket": "project-arm-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:88186335632:android:068ae4931868c78fbb0315",
+        "android_client_info": {
+          "package_name": "com.example.flutter_application_1"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC5EXH2512zpXXwG2zyMyb8VGSZB1Xhpck"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 
 class HistoryPage extends StatefulWidget {
-  const HistoryPage({super.key});
+  const HistoryPage({
+    super.key,
+    this.showBottomNav = true,
+  });
+
+  final bool showBottomNav;
 
   @override
   State<HistoryPage> createState() => _HistoryPageState();
@@ -51,7 +56,7 @@ class _HistoryPageState extends State<HistoryPage> {
           ],
         ),
       ),
-      bottomNavigationBar: const _HistoryNavigation(),
+      bottomNavigationBar: widget.showBottomNav ? const _HistoryNavigation() : null,
     );
   }
 }

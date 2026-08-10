@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 
 import 'appointment.dart';
 import 'history.dart';
+import 'login.dart';
+import 'doctor_repository.dart';
 
 class QueueHomePage extends StatefulWidget {
   const QueueHomePage({super.key, this.hideBottomNav = false});
@@ -19,6 +21,22 @@ class _QueueHomePageState extends State<QueueHomePage> {
   final String _queue = '0001';
 
   void _setTab(int value) => setState(() => _selectedTab = value);
+
+  Future<void> _logout() async {
+    try {
+      await FirebaseAuth.instance.signOut();
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginPage()),
+        (route) => false,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('ออกจากระบบไม่สำเร็จ: $error')));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -54,7 +72,7 @@ class _QueueHomePageState extends State<QueueHomePage> {
         SafeArea(
           child: Column(
             children: [
-              _TopBar(compact: compact),
+              _TopBar(compact: compact, onLogout: _logout),
               Expanded(child: child),
             ],
           ),
@@ -117,7 +135,10 @@ class _QueueHomePageState extends State<QueueHomePage> {
                       ),
                       child: const Text(
                         'ไปยังหน้าจองคิว',
-                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   ),
@@ -137,9 +158,15 @@ class _QueueHomePageState extends State<QueueHomePage> {
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 520),
-          child: _QueueCard(
-            queue: _queue,
-            onConfirm: () => _bookAppointment(),
+          child: Column(
+            children: [
+              // Show doctors and their availabilities above booking card
+              ...DoctorRepository.doctors.map(
+                (d) => _DoctorAvailabilitySummary(doctor: d),
+              ),
+              const SizedBox(height: 10),
+              _QueueCard(queue: _queue, onConfirm: () => _bookAppointment()),
+            ],
           ),
         ),
       ),
@@ -157,14 +184,19 @@ class _QueueHomePageState extends State<QueueHomePage> {
           title: const Text('ต้องเข้าสู่ระบบ'),
           content: const Text('กรุณาเข้าสู่ระบบก่อนทำการจองคิว'),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('ตกลง')),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('ตกลง'),
+            ),
           ],
         ),
       );
       return;
     }
 
-    final queueNumber = (DateTime.now().millisecondsSinceEpoch % 10000).toString().padLeft(4, '0');
+    final queueNumber = (DateTime.now().millisecondsSinceEpoch % 10000)
+        .toString()
+        .padLeft(4, '0');
 
     final doc = {
       'userId': user.uid,
@@ -178,9 +210,15 @@ class _QueueHomePageState extends State<QueueHomePage> {
     };
 
     try {
-      final ref = await FirebaseFirestore.instance.collection('appointments').add(doc);
+      final ref = await FirebaseFirestore.instance
+          .collection('appointments')
+          .add(doc);
       if (!mounted) return;
-      Navigator.of(context).push(MaterialPageRoute(builder: (_) => AppointmentPage.fromMap(id: ref.id, data: doc)));
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => AppointmentPage.fromMap(id: ref.id, data: doc),
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       showDialog(
@@ -188,7 +226,12 @@ class _QueueHomePageState extends State<QueueHomePage> {
         builder: (context) => AlertDialog(
           title: const Text('ไม่สามารถจองคิวได้'),
           content: Text(e.toString()),
-          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('ตกลง'))],
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('ตกลง'),
+            ),
+          ],
         ),
       );
     }
@@ -285,7 +328,7 @@ class _QueueHomePageState extends State<QueueHomePage> {
             SizedBox(
               height: 50,
               child: ElevatedButton.icon(
-                onPressed: FirebaseAuth.instance.signOut,
+                onPressed: _logout,
                 icon: const Icon(Icons.logout_rounded),
                 label: const Text('ออกจากระบบ'),
                 style: ElevatedButton.styleFrom(
@@ -311,7 +354,11 @@ class _QueueHomePageState extends State<QueueHomePage> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Row(
         children: [
-          Icon(Icons.arrow_right_rounded, size: 18, color: const Color(0xff159ea3)),
+          Icon(
+            Icons.arrow_right_rounded,
+            size: 18,
+            color: const Color(0xff159ea3),
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
@@ -383,8 +430,9 @@ class _PlusPattern extends StatelessWidget {
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.compact});
+  const _TopBar({required this.compact, required this.onLogout});
   final bool compact;
+  final VoidCallback onLogout;
 
   @override
   Widget build(BuildContext context) {
@@ -442,7 +490,7 @@ class _TopBar extends StatelessWidget {
             child: IconButton(
               tooltip: 'ออกจากระบบ',
               padding: EdgeInsets.zero,
-              onPressed: FirebaseAuth.instance.signOut,
+              onPressed: onLogout,
               icon: const Icon(
                 Icons.logout_rounded,
                 color: Color(0xff159fa8),
@@ -450,6 +498,90 @@ class _TopBar extends StatelessWidget {
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DoctorAvailabilitySummary extends StatelessWidget {
+  const _DoctorAvailabilitySummary({required this.doctor});
+
+  final DoctorAccount doctor;
+
+  @override
+  Widget build(BuildContext context) {
+    final avail = doctor.availabilities;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xffd8eef0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            doctor.name,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: Color(0xff114d58),
+            ),
+          ),
+          const SizedBox(height: 6),
+          if (avail.isEmpty)
+            const Text(
+              'ยังไม่มีเวลาว่าง',
+              style: TextStyle(color: Color(0xff6b8e91)),
+            )
+          else
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: avail.map((a) {
+                final date = DateTime.tryParse(a.dateIso);
+                final dateStr = date != null
+                    ? '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}'
+                    : a.dateIso;
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.calendar_month_outlined,
+                        size: 14,
+                        color: Color(0xff0f979f),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        dateStr,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xff285e65),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Icon(
+                        Icons.access_time_rounded,
+                        size: 14,
+                        color: Color(0xff0f979f),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${a.startHHmm} - ${a.endHHmm}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xff285e65),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
         ],
       ),
     );

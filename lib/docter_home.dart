@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'appointment.dart';
 import 'doctor_repository.dart';
 import 'history.dart';
+import 'login.dart';
 
 class DocterHomePage extends StatefulWidget {
   const DocterHomePage({
@@ -317,6 +318,10 @@ class _DocterHomePageState extends State<DocterHomePage> {
               child: ElevatedButton.icon(
                 onPressed: () async {
                   await FirebaseAuth.instance.signOut();
+                  if (!mounted) return;
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(builder: (_) => const LoginPage()),
+                  );
                 },
                 icon: const Icon(Icons.logout_rounded),
                 label: const Text('ออกจากระบบ'),

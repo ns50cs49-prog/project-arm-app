@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import 'docter.dart';
+import 'docter_home.dart';
 import 'doctor_repository.dart';
+import 'queue_home.dart';
 import 'register_page.dart';
 
 class LoginPage extends StatefulWidget {
@@ -11,6 +13,8 @@ class LoginPage extends StatefulWidget {
   @override
   State<LoginPage> createState() => _LoginPageState();
 }
+
+const _adminEmail = 'raddawan3079@gmail.com';
 
 class _LoginPageState extends State<LoginPage> {
   final _emailController = TextEditingController();
@@ -41,10 +45,9 @@ class _LoginPageState extends State<LoginPage> {
     final doctor = DoctorRepository.findByEmailAndLoginId(email, password);
     if (doctor != null) {
       if (!mounted) return;
+      setState(() => _isLoading = false);
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => DocterPage(doctor: doctor),
-        ),
+        MaterialPageRoute(builder: (_) => DocterPage(doctor: doctor)),
       );
       return;
     }
@@ -54,6 +57,22 @@ class _LoginPageState extends State<LoginPage> {
         email: email,
         password: password,
       );
+
+      if (!mounted) return;
+      if (email.trim().toLowerCase() == _adminEmail) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) =>
+                DocterHomePage(adminName: 'Admin', adminEmail: email),
+          ),
+        );
+        return;
+      }
+
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const QueueHomePage()),
+      );
+      return;
     } on FirebaseAuthException catch (error) {
       if (!mounted) return;
       final message = switch (error.code) {

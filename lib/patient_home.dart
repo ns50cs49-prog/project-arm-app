@@ -7,18 +7,20 @@ import 'history.dart';
 import 'login.dart';
 import 'doctor_repository.dart';
 
-class QueueHomePage extends StatefulWidget {
-  const QueueHomePage({super.key, this.hideBottomNav = false});
+class PatientHomePage extends StatefulWidget {
+  const PatientHomePage({super.key, this.hideBottomNav = false});
 
   final bool hideBottomNav;
 
   @override
-  State<QueueHomePage> createState() => _QueueHomePageState();
+  State<PatientHomePage> createState() => _PatientHomePageState();
 }
 
-class _QueueHomePageState extends State<QueueHomePage> {
+class _PatientHomePageState extends State<PatientHomePage> {
   int _selectedTab = 0;
   final String _queue = '0001';
+  DoctorAccount? _selectedDoctor;
+  DoctorAvailabilityModel? _selectedAvailability;
 
   void _setTab(int value) => setState(() => _selectedTab = value);
 
@@ -160,12 +162,55 @@ class _QueueHomePageState extends State<QueueHomePage> {
           constraints: const BoxConstraints(maxWidth: 520),
           child: Column(
             children: [
-              // Show doctors and their availabilities above booking card
+              if (FirebaseAuth.instance.currentUser != null)
+                StreamBuilder<List<Map<String, dynamic>>>(
+                  stream: DoctorRepository.watchAppointmentsForPatient(
+                    FirebaseAuth.instance.currentUser!.uid,
+                  ),
+                  builder: (context, snapshot) {
+                    final appointments = snapshot.data ?? const [];
+                    if (appointments.isEmpty) return const SizedBox.shrink();
+                    return Column(
+                      children: [
+                        ...appointments.map(
+                          (appt) => _MyAppointmentCard(
+                            appointment: appt,
+                            onCancel: () => _cancelAppointment(appt),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                      ],
+                    );
+                  },
+                ),
+              // Show doctors above the booking card; tap a doctor to view status
               ...DoctorRepository.doctors.map(
-                (d) => _DoctorAvailabilitySummary(doctor: d),
+                (d) => _DoctorListTile(
+                  doctor: d,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => DoctorTimeSlotPage(
+                        doctor: d,
+                        selectedAvailabilityId:
+                            _selectedDoctor?.loginId == d.loginId
+                            ? _selectedAvailability?.id
+                            : null,
+                        onSelect: (availability) => setState(() {
+                          _selectedDoctor = d;
+                          _selectedAvailability = availability;
+                        }),
+                      ),
+                    ),
+                  ),
+                ),
               ),
               const SizedBox(height: 10),
-              _QueueCard(queue: _queue, onConfirm: () => _bookAppointment()),
+              _QueueCard(
+                queue: _queue,
+                selectedDoctor: _selectedDoctor,
+                selectedAvailability: _selectedAvailability,
+                onConfirm: () => _bookAppointment(),
+              ),
             ],
           ),
         ),
@@ -194,29 +239,75 @@ class _QueueHomePageState extends State<QueueHomePage> {
       return;
     }
 
-    final queueNumber = (DateTime.now().millisecondsSinceEpoch % 10000)
-        .toString()
-        .padLeft(4, '0');
+    final doctor = _selectedDoctor;
+    final availability = _selectedAvailability;
+    if (doctor == null || availability?.id == null) {
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('กรุณาเลือกแพทย์และช่วงเวลา'),
+          content: const Text('กรุณาเลือกแพทย์และช่วงเวลาที่ต้องการก่อนจองคิว'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('ตกลง'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
 
     final doc = {
       'userId': user.uid,
       'displayName': user.displayName ?? '',
       'email': user.email ?? '',
       'phone': user.phoneNumber ?? '',
-      'queue': queueNumber,
+      'doctorLoginId': doctor.loginId,
       'status': 'ยืนยันแล้ว',
       'createdAt': FieldValue.serverTimestamp(),
-      'date': DateTime.now().toIso8601String(),
+      'date': availability!.dateIso,
     };
 
     try {
-      final ref = await FirebaseFirestore.instance
-          .collection('appointments')
-          .add(doc);
+      final queueNumber = await DoctorRepository.bookAvailabilitySlot(
+        availabilityId: availability.id!,
+        appointmentData: doc,
+      ).timeout(const Duration(seconds: 10));
+      if (queueNumber == null) {
+        if (!mounted) return;
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('คิวเต็มแล้ว'),
+            content: const Text('ช่วงเวลานี้มีผู้จองเต็มจำนวนแล้ว กรุณาเลือกแพทย์อื่น'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('ตกลง'),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+
       if (!mounted) return;
+      setState(() {
+        _selectedDoctor = null;
+        _selectedAvailability = null;
+      });
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => AppointmentPage.fromMap(id: ref.id, data: doc),
+          builder: (_) => AppointmentPage.fromMap(
+            id: availability.id!,
+            data: {
+              ...doc,
+              'queue': queueNumber,
+              'time': '${availability.startHHmm} - ${availability.endHHmm} น.',
+            },
+          ),
         ),
       );
     } catch (e) {
@@ -233,6 +324,50 @@ class _QueueHomePageState extends State<QueueHomePage> {
             ),
           ],
         ),
+      );
+    }
+  }
+
+  Future<void> _cancelAppointment(Map<String, dynamic> appt) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('ยกเลิกนัดหมาย'),
+        content: const Text('ต้องการยกเลิกนัดหมายนี้หรือไม่?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('ปิด'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(
+              'ยกเลิกนัดหมาย',
+              style: TextStyle(color: Color(0xffe64051)),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final appointmentId = appt['id'] as String?;
+    final availabilityId = appt['availabilityId'] as String?;
+    if (appointmentId == null || availabilityId == null) return;
+
+    try {
+      await DoctorRepository.cancelAppointment(
+        appointmentId: appointmentId,
+        availabilityId: availabilityId,
+      ).timeout(const Duration(seconds: 10));
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('ยกเลิกนัดหมายสำเร็จ')));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('ยกเลิกนัดหมายไม่สำเร็จ: $error')),
       );
     }
   }
@@ -504,97 +639,389 @@ class _TopBar extends StatelessWidget {
   }
 }
 
-class _DoctorAvailabilitySummary extends StatelessWidget {
-  const _DoctorAvailabilitySummary({required this.doctor});
+String _doctorNameFor(String? loginId) {
+  for (final doctor in DoctorRepository.doctors) {
+    if (doctor.loginId == loginId) return doctor.name;
+  }
+  return 'แพทย์';
+}
 
-  final DoctorAccount doctor;
+class _MyAppointmentCard extends StatelessWidget {
+  const _MyAppointmentCard({required this.appointment, required this.onCancel});
+
+  final Map<String, dynamic> appointment;
+  final VoidCallback onCancel;
 
   @override
   Widget build(BuildContext context) {
-    final avail = doctor.availabilities;
+    final doctorName = _doctorNameFor(appointment['doctorLoginId'] as String?);
+    final time = (appointment['time'] as String?) ?? 'ไม่ระบุเวลา';
+    final queue = (appointment['queueNumber'] as String?) ?? '';
+
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xffd8eef0)),
+        border: Border.all(color: const Color(0xffbfe9ea)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Text(
-            doctor.name,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: Color(0xff114d58),
+          const Icon(Icons.event_available_rounded, color: Color(0xff12aeb6)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'นัดหมายกับ $doctorName',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xff114d58),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'เวลา $time • คิว $queue',
+                  style: const TextStyle(fontSize: 11, color: Color(0xff6b8f94)),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 6),
-          if (avail.isEmpty)
-            const Text(
-              'ยังไม่มีเวลาว่าง',
-              style: TextStyle(color: Color(0xff6b8e91)),
-            )
-          else
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: avail.map((a) {
-                final date = DateTime.tryParse(a.dateIso);
-                final dateStr = date != null
-                    ? '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}'
-                    : a.dateIso;
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.calendar_month_outlined,
-                        size: 14,
-                        color: Color(0xff0f979f),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        dateStr,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Color(0xff285e65),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      const Icon(
-                        Icons.access_time_rounded,
-                        size: 14,
-                        color: Color(0xff0f979f),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '${a.startHHmm} - ${a.endHHmm}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Color(0xff285e65),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }).toList(),
+          TextButton(
+            onPressed: onCancel,
+            child: const Text(
+              'ยกเลิก',
+              style: TextStyle(
+                color: Color(0xffe64051),
+                fontWeight: FontWeight.w700,
+              ),
             ),
+          ),
         ],
       ),
     );
   }
 }
 
+class _DoctorListTile extends StatelessWidget {
+  const _DoctorListTile({required this.doctor, required this.onTap});
+
+  final DoctorAccount doctor;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xffd8eef0)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  color: Color(0xffe8fafa),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.medical_services_rounded,
+                  size: 21,
+                  color: Color(0xff1aaab3),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      doctor.name,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xff114d58),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    StreamBuilder<List<DoctorAvailabilityModel>>(
+                      stream: DoctorRepository.watchAvailabilitiesForDoctor(
+                        doctor.loginId,
+                      ),
+                      builder: (context, snapshot) {
+                        if (snapshot.hasError) {
+                          return const Text(
+                            'โหลดเวลาว่างไม่สำเร็จ',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Color(0xffe64051),
+                            ),
+                          );
+                        }
+                        final slots = snapshot.data ?? const [];
+                        final hasOpenSlot = slots.any(
+                          (slot) => slot.bookedCount < slot.maxQueue,
+                        );
+                        final String label;
+                        final Color color;
+                        if (slots.isEmpty) {
+                          label = 'ยังไม่มีเวลาว่าง';
+                          color = const Color(0xff6b8e91);
+                        } else if (hasOpenSlot) {
+                          label = 'มีเวลาว่าง';
+                          color = const Color(0xff0d9984);
+                        } else {
+                          label = 'คิวเต็มหมดแล้ว';
+                          color = const Color(0xffe64051);
+                        }
+                        return Text(
+                          label,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: color,
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: Color(0xff139da7),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class DoctorTimeSlotPage extends StatelessWidget {
+  const DoctorTimeSlotPage({
+    super.key,
+    required this.doctor,
+    required this.selectedAvailabilityId,
+    required this.onSelect,
+  });
+
+  final DoctorAccount doctor;
+  final String? selectedAvailabilityId;
+  final void Function(DoctorAvailabilityModel availability) onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xfff7fcfd),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(
+            Icons.chevron_left_rounded,
+            color: Color(0xff155f68),
+          ),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: Text(
+          doctor.name,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: Color(0xff114d58),
+          ),
+        ),
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: StreamBuilder<List<DoctorAvailabilityModel>>(
+            stream: DoctorRepository.watchAvailabilitiesForDoctor(
+              doctor.loginId,
+            ),
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return Text(
+                  'โหลดเวลาว่างไม่สำเร็จ: ${snapshot.error}',
+                  style: const TextStyle(color: Color(0xffe64051)),
+                );
+              }
+              final slots = snapshot.data ?? const [];
+              if (slots.isEmpty) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 40),
+                  child: Center(
+                    child: Text(
+                      'ยังไม่มีเวลาว่างสำหรับวันนี้',
+                      style: TextStyle(color: Color(0xff6b8e91)),
+                    ),
+                  ),
+                );
+              }
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: slots.map((slot) {
+                  final full = slot.bookedCount >= slot.maxQueue;
+                  final isSelected =
+                      slot.id != null && slot.id == selectedAvailabilityId;
+                  final date = DateTime.tryParse(slot.dateIso);
+                  final dateStr = date != null
+                      ? '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}'
+                      : slot.dateIso;
+
+                  return Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xffd8eef0)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.calendar_month_outlined,
+                              size: 17,
+                              color: Color(0xff0f979f),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              dateStr,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xff285e65),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            const Icon(
+                              Icons.access_time_rounded,
+                              size: 17,
+                              color: Color(0xff0f979f),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              '${slot.startHHmm} - ${slot.endHHmm} น.',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xff114d58),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          full
+                              ? 'คิวเต็มแล้วสำหรับวันนี้ (${slot.bookedCount}/${slot.maxQueue} คิว)'
+                              : 'ว่าง ${slot.maxQueue - slot.bookedCount}/${slot.maxQueue} คิว',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: full
+                                ? const Color(0xffe64051)
+                                : const Color(0xff0d9984),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 44,
+                          child: ElevatedButton(
+                            onPressed: full
+                                ? null
+                                : () {
+                                    onSelect(slot);
+                                    Navigator.of(context).pop();
+                                  },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: isSelected
+                                  ? const Color(0xff0d8c93)
+                                  : const Color(0xff12aeb6),
+                              disabledBackgroundColor: const Color(0xfff2f5f6),
+                              foregroundColor: Colors.white,
+                              disabledForegroundColor: const Color(
+                                0xffa9bcbf,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            child: Text(
+                              full
+                                  ? 'คิวเต็มแล้ว'
+                                  : isSelected
+                                  ? 'เลือกช่วงเวลานี้แล้ว'
+                                  : 'เลือกช่วงเวลานี้',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _QueueCard extends StatelessWidget {
-  const _QueueCard({required this.queue, required this.onConfirm});
+  const _QueueCard({
+    required this.queue,
+    required this.selectedDoctor,
+    required this.selectedAvailability,
+    required this.onConfirm,
+  });
   final String queue;
+  final DoctorAccount? selectedDoctor;
+  final DoctorAvailabilityModel? selectedAvailability;
   final VoidCallback onConfirm;
 
   @override
   Widget build(BuildContext context) {
+    final availability = selectedAvailability;
+    final date = DateTime.tryParse(availability?.dateIso ?? '');
+    final dateText = availability == null
+        ? 'เลือกวันที่จากรายชื่อแพทย์ด้านบน'
+        : date != null
+        ? '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}'
+        : availability.dateIso;
+    final timeText = availability == null
+        ? 'เลือกช่วงเวลาที่ต้องการ'
+        : '${availability.startHHmm} - ${availability.endHHmm} น.';
+    final doctorText = selectedDoctor == null
+        ? 'เลือกแพทย์ที่ต้องการ'
+        : selectedDoctor!.name;
+
     return Card(
       elevation: 5,
       shadowColor: const Color(0x1a61aeb1),
@@ -608,31 +1035,32 @@ class _QueueCard extends StatelessWidget {
             const SizedBox(height: 14),
             _QueueNumber(queue: queue),
             const SizedBox(height: 10),
-            const _DetailsTile(
+            _DetailsTile(
+              icon: Icons.medical_services_outlined,
+              title: 'แพทย์',
+              subtitle: doctorText,
+              hasArrow: false,
+            ),
+            const SizedBox(height: 6),
+            _DetailsTile(
               icon: Icons.calendar_month_outlined,
               title: 'วันที่',
-              subtitle: 'เลือกวันที่เข้ารับบริการ',
+              subtitle: dateText,
+              hasArrow: false,
             ),
             const SizedBox(height: 6),
-            const _DetailsTile(
+            _DetailsTile(
               icon: Icons.access_time_rounded,
               title: 'เวลา',
-              subtitle: 'เลือกเวลาที่ต้องการ',
-              hasArrow: true,
-            ),
-            const SizedBox(height: 6),
-            const _DetailsTile(
-              icon: Icons.location_on_rounded,
-              title: 'สถานที่',
-              subtitle: 'เลือกสาขาที่ใช้บริการ',
-              hasArrow: true,
+              subtitle: timeText,
+              hasArrow: false,
             ),
             const SizedBox(height: 10),
             SizedBox(
               height: 47,
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: onConfirm,
+                onPressed: availability != null ? onConfirm : null,
                 icon: const Icon(Icons.verified_user_outlined, size: 22),
                 label: const Text(
                   'ยืนยันการจองคิว',

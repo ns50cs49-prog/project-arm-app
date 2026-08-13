@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-import 'docter.dart';
-import 'docter_home.dart';
+import 'doctor_page.dart';
+import 'admin_home.dart';
 import 'doctor_repository.dart';
-import 'queue_home.dart';
+import 'patient_home.dart';
 import 'register_page.dart';
 
 class LoginPage extends StatefulWidget {
@@ -47,7 +47,7 @@ class _LoginPageState extends State<LoginPage> {
       if (!mounted) return;
       setState(() => _isLoading = false);
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => DocterPage(doctor: doctor)),
+        MaterialPageRoute(builder: (_) => DoctorPage(doctor: doctor)),
       );
       return;
     }
@@ -63,14 +63,14 @@ class _LoginPageState extends State<LoginPage> {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
             builder: (_) =>
-                DocterHomePage(adminName: 'Admin', adminEmail: email),
+                AdminHomePage(adminName: 'Admin', adminEmail: email),
           ),
         );
         return;
       }
 
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const QueueHomePage()),
+        MaterialPageRoute(builder: (_) => const PatientHomePage()),
       );
       return;
     } on FirebaseAuthException catch (error) {

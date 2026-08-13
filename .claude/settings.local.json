@@ -5,7 +5,11 @@
       "PowerShell(flutter analyze)",
       "PowerShell($paths = @\\(\"C:\\\\flutter\",\"C:\\\\src\\\\flutter\",\"$env:USERPROFILE\\\\flutter\",\"$env:USERPROFILE\\\\dev\\\\flutter\",\"$env:LOCALAPPDATA\\\\flutter\",\"C:\\\\tools\\\\flutter\"\\); foreach \\($p in $paths\\) { if \\(Test-Path $p\\) { Write-Output \"FOUND: $p\" } }; $env:PATH -split ';' | Select-String -Pattern \"flutter\")",
       "PowerShell(& \"C:\\\\Users\\\\phayu\\\\Documents\\\\flutter_windows_3.44.6-stable\\\\flutter\\\\bin\\\\flutter.bat\" analyze)",
-      "PowerShell(& \"C:\\\\Users\\\\phayu\\\\Documents\\\\flutter_windows_3.44.6-stable\\\\flutter\\\\bin\\\\flutter.bat\" devices)"
+      "PowerShell(& \"C:\\\\Users\\\\phayu\\\\Documents\\\\flutter_windows_3.44.6-stable\\\\flutter\\\\bin\\\\flutter.bat\" devices)",
+      "Bash(awk '!seen[$0]++ { print; fflush\\(\\) }')",
+      "Bash(flutter run *)",
+      "Bash(where chromedriver *)",
+      "Bash(npm list *)"
     ]
   }
 }

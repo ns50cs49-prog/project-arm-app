@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import 'admin_home.dart';
+import 'doctor_repository.dart';
+
 class HistoryPage extends StatefulWidget {
   const HistoryPage({
     super.key,
@@ -19,9 +22,18 @@ class _HistoryPageState extends State<HistoryPage> {
   Widget build(BuildContext context) {
     const tabs = ['ทั้งหมด', 'กำลังมาถึง', 'เสร็จสิ้นแล้ว', 'ยกเลิกแล้ว'];
     final appointments = <_Appointment>[
-      const _Appointment(month: 'พ.ค.', day: '14', year: '2567', time: '09:00 น.', status: 'ยืนยันแล้ว', state: _State.confirmed),
-      const _Appointment(month: 'เม.ย.', day: '30', year: '2567', time: '10:00 น.', status: 'เสร็จสิ้นแล้ว', state: _State.completed),
-      const _Appointment(month: 'เม.ย.', day: '18', year: '2567', time: '11:00 น.', status: 'ยกเลิก', state: _State.cancelled),
+      const _Appointment(
+        month: 'พ.ค.', day: '14', year: '2567', time: '09:00 น.', status: 'ยืนยันแล้ว', state: _State.confirmed,
+        patientName: 'User', doctorName: 'นพ. สมชาย นาคมศักดิ์', bodyPart: 'ข้อไหล่', treatmentType: 'กายภาพบำบัดข้อไหล่', setCount: 3,
+      ),
+      const _Appointment(
+        month: 'เม.ย.', day: '30', year: '2567', time: '10:00 น.', status: 'เสร็จสิ้นแล้ว', state: _State.completed,
+        patientName: 'User', doctorName: 'พญ. น้ำฝน อ่อนน้อม', bodyPart: 'หลังส่วนล่าง', treatmentType: 'นวดบำบัดกล้ามเนื้อหลัง', setCount: 2,
+      ),
+      const _Appointment(
+        month: 'เม.ย.', day: '18', year: '2567', time: '11:00 น.', status: 'ยกเลิก', state: _State.cancelled,
+        patientName: 'User', doctorName: 'น.สพ. ทรงพล ใจดี', bodyPart: 'ข้อเข่า', treatmentType: 'กายภาพบำบัดข้อเข่า', setCount: 4,
+      ),
     ];
     final visible = _tab == 0 ? appointments : appointments.where((item) => item.state.index == _tab - 1).toList();
 
@@ -120,13 +132,30 @@ class _HistoryTab extends StatelessWidget {
 enum _State { confirmed, completed, cancelled }
 
 class _Appointment {
-  const _Appointment({required this.month, required this.day, required this.year, required this.time, required this.status, required this.state});
+  const _Appointment({
+    required this.month,
+    required this.day,
+    required this.year,
+    required this.time,
+    required this.status,
+    required this.state,
+    required this.patientName,
+    required this.doctorName,
+    required this.bodyPart,
+    required this.treatmentType,
+    required this.setCount,
+  });
   final String month;
   final String day;
   final String year;
   final String time;
   final String status;
   final _State state;
+  final String patientName;
+  final String doctorName;
+  final String bodyPart;
+  final String treatmentType;
+  final int setCount;
 }
 
 class _AppointmentCard extends StatelessWidget {
@@ -167,7 +196,25 @@ class _AppointmentCard extends StatelessWidget {
           const SizedBox(height: 4),
           const Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [_Treatment(icon: Icons.accessibility_new_rounded, label: 'ยืดกล้ามเนื้อ'), _Treatment(icon: Icons.spa_outlined, label: 'อัลตราซาวด์'), _Treatment(icon: Icons.back_hand_outlined, label: 'นวดบำบัด')]),
           const SizedBox(height: 6),
-          Container(height: 22, alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 10), decoration: BoxDecoration(color: const Color(0xfff8fcfd), borderRadius: BorderRadius.circular(6)), child: const Row(mainAxisAlignment: MainAxisAlignment.end, children: [Text('รายละเอียด', style: TextStyle(fontSize: 8, color: Color(0xff4a7b82))), SizedBox(width: 4), Icon(Icons.chevron_right_rounded, size: 15, color: Color(0xff159da7))])),
+          InkWell(
+            borderRadius: BorderRadius.circular(6),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => PatientTreatmentDetailPage(
+                  treatment: TreatmentHistoryItem(
+                    doctorLoginId: '',
+                    patientName: appointment.patientName,
+                    treatmentType: appointment.treatmentType,
+                    bodyPart: appointment.bodyPart,
+                    setCount: appointment.setCount,
+                    dateIso: '${appointment.day} ${appointment.month} ${appointment.year}',
+                  ),
+                  doctorName: appointment.doctorName,
+                ),
+              ),
+            ),
+            child: Container(height: 22, alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 10), decoration: BoxDecoration(color: const Color(0xfff8fcfd), borderRadius: BorderRadius.circular(6)), child: const Row(mainAxisAlignment: MainAxisAlignment.end, children: [Text('รายละเอียด', style: TextStyle(fontSize: 8, color: Color(0xff4a7b82))), SizedBox(width: 4), Icon(Icons.chevron_right_rounded, size: 15, color: Color(0xff159da7))])),
+          ),
         ]),
       ),
     );

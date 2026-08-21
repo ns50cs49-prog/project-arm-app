@@ -46,7 +46,7 @@ This static class is the single data-access layer, but its collections have diff
 
 ### Local Firestore emulator wiring (dev-only, `main.dart`)
 
-In `kDebugMode`, `main.dart` points Firestore at a **local emulator** via a hardcoded LAN IP (currently `10.10.0.135:8080`), not `localhost` — connecting via `localhost`/adb-reverse over USB triggered the same gRPC channel-drop issue on the test Android device; a direct LAN IP (phone and dev machine on the same WiFi) was the workaround that held up. If this IP changes (different machine, different network), update it here or the doctor/patient flows will silently time out.
+In `kDebugMode`, `main.dart` points Firestore at a **local emulator** via a hardcoded LAN IP (currently `10.10.0.169:8080`), not `localhost` — connecting via `localhost`/adb-reverse over USB triggered the same gRPC channel-drop issue on the test Android device; a direct LAN IP (phone and dev machine on the same WiFi) was the workaround that held up. If this IP changes (different machine, different network), update it here or the doctor/patient flows will silently time out.
 
 Related pieces this depends on:
 - `firebase.json` configures the emulator (`firestore` + `ui`, both bound to `0.0.0.0`) and points `firestore.rules` at `firestore.rules`, which is a **wide-open dev ruleset** (`allow read, write: if true;`) — fine for the local emulator, not what should ever be deployed to the real project.

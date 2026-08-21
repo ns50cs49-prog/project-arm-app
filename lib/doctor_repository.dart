@@ -2,15 +2,22 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 /// Retries a Firestore write a few times on transient channel/network
-/// errors (e.g. "Channel shutdownNow invoked") before giving up.
-Future<T> _withRetry<T>(Future<T> Function() action, {int retries = 2}) async {
+/// errors (e.g. "Channel shutdownNow invoked", or the local emulator's
+/// gRPC channel getting killed with "GOAWAY ... too_many_pings" which
+/// surfaces as `resource-exhausted`) before giving up.
+Future<T> _withRetry<T>(Future<T> Function() action, {int retries = 3}) async {
+  const transientCodes = {
+    'unavailable',
+    'deadline-exceeded',
+    'resource-exhausted',
+  };
   for (var attempt = 0; ; attempt++) {
     try {
       return await action();
     } on FirebaseException catch (error) {
-      final transient = error.code == 'unavailable' || error.code == 'deadline-exceeded';
+      final transient = transientCodes.contains(error.code);
       if (!transient || attempt >= retries) rethrow;
-      await Future.delayed(Duration(milliseconds: 500 * (attempt + 1)));
+      await Future.delayed(Duration(milliseconds: 700 * (attempt + 1)));
     }
   }
 }
@@ -18,14 +25,18 @@ Future<T> _withRetry<T>(Future<T> Function() action, {int retries = 2}) async {
 class DoctorAvailabilityModel {
   const DoctorAvailabilityModel({
     this.id,
+    required this.doctorLoginId,
     required this.dateIso,
     required this.startHHmm,
     required this.endHHmm,
     required this.maxQueue,
     this.bookedCount = 0,
+    this.updatedAt,
   });
 
   final String? id; // Firestore document id
+  final String doctorLoginId;
+  final DateTime? updatedAt; // when the doctor last confirmed this slot
   final String dateIso; // ISO date string (yyyy-MM-ddTHH:mm:ss...)
   final String startHHmm; // e.g. '09:00'
   final String endHHmm; // e.g. '12:30'
@@ -142,6 +153,11 @@ class DoctorRepository {
     'appointments',
   );
 
+  static final CollectionReference<Map<String, dynamic>>
+  _treatmentHistoryCollection = FirebaseFirestore.instance.collection(
+    'treatmentHistory',
+  );
+
   static List<DoctorAccount> get doctors => List.unmodifiable(_doctors);
 
   static void addDoctor(DoctorAccount doctor) {
@@ -190,6 +206,21 @@ class DoctorRepository {
   /// yyyy-MM-dd for the current day, used to scope slots/queues to "today".
   static String _todayKey() => DateTime.now().toIso8601String().substring(0, 10);
 
+  static DoctorAvailabilityModel _availabilityFromDoc(
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
+    return DoctorAvailabilityModel(
+      id: doc.id,
+      doctorLoginId: doc.data()['doctorLoginId'] as String,
+      dateIso: doc.data()['dateIso'] as String,
+      startHHmm: doc.data()['startHHmm'] as String,
+      endHHmm: doc.data()['endHHmm'] as String,
+      maxQueue: (doc.data()['maxQueue'] as num?)?.toInt() ?? 0,
+      bookedCount: (doc.data()['bookedCount'] as num?)?.toInt() ?? 0,
+      updatedAt: (doc.data()['updatedAt'] as Timestamp?)?.toDate(),
+    );
+  }
+
   static Stream<List<DoctorAvailabilityModel>> watchAvailabilitiesForDoctor(
     String loginId,
   ) {
@@ -199,28 +230,32 @@ class DoctorRepository {
         .snapshots()
         .map(
           (snapshot) => snapshot.docs
-              .map(
-                (doc) => DoctorAvailabilityModel(
-                  id: doc.id,
-                  dateIso: doc.data()['dateIso'] as String,
-                  startHHmm: doc.data()['startHHmm'] as String,
-                  endHHmm: doc.data()['endHHmm'] as String,
-                  maxQueue: (doc.data()['maxQueue'] as num?)?.toInt() ?? 0,
-                  bookedCount:
-                      (doc.data()['bookedCount'] as num?)?.toInt() ?? 0,
-                ),
-              )
+              .map(_availabilityFromDoc)
               .where((slot) => slot.dateIso.startsWith(today))
               .toList(),
         );
   }
 
+  /// Watches every doctor's availability slot for today in a single
+  /// listener — used by the patient's doctor list so it doesn't need one
+  /// Firestore stream per doctor (which multiplies watch-stream traffic).
+  static Stream<List<DoctorAvailabilityModel>> watchAllAvailabilitiesToday() {
+    final today = _todayKey();
+    return _availabilityCollection.snapshots().map(
+      (snapshot) => snapshot.docs
+          .map(_availabilityFromDoc)
+          .where((slot) => slot.dateIso.startsWith(today))
+          .toList(),
+    );
+  }
+
   /// Atomically checks capacity and books a slot. Returns the assigned
-  /// zero-padded queue number, or null if the slot is already full. The
-  /// patient no longer picks a specific time — booking is into the
-  /// doctor's whole-day range, ordered by booking order.
+  /// zero-padded queue number, or null if the slot is already full.
+  /// `selectedTimeHHmm` is the specific appointment time the patient
+  /// picked (e.g. '10:00') within the doctor's range.
   static Future<String?> bookAvailabilitySlot({
     required String availabilityId,
+    required String selectedTimeHHmm,
     required Map<String, dynamic> appointmentData,
   }) {
     final availabilityRef = _availabilityCollection.doc(availabilityId);
@@ -238,16 +273,18 @@ class DoctorRepository {
         if (bookedCount >= maxQueue) return null;
 
         final queueNumber = (bookedCount + 1).toString().padLeft(3, '0');
-        final startHHmm = data['startHHmm'] as String? ?? '';
-        final endHHmm = data['endHHmm'] as String? ?? '';
         transaction.update(availabilityRef, {'bookedCount': bookedCount + 1});
-        transaction.set(appointmentRef, {
+        final newAppointment = {
           ...appointmentData,
           'availabilityId': availabilityId,
           'queueNumber': queueNumber,
-          'time': '$startHHmm - $endHHmm น.',
+          'time': '$selectedTimeHHmm น.',
           'called': false,
-        });
+          'completed': false,
+        };
+        // ignore: avoid_print
+        print('DEBUG bookAvailabilitySlot writing: $newAppointment');
+        transaction.set(appointmentRef, newAppointment);
         return queueNumber;
       });
     });
@@ -282,13 +319,103 @@ class DoctorRepository {
     );
   }
 
+  /// Appointments that have been called and are currently being treated
+  /// (not yet marked complete by the doctor).
+  static Stream<List<Map<String, dynamic>>> watchInProgressAppointmentsForDoctor(
+    String doctorLoginId,
+  ) {
+    final today = _todayKey();
+    return _appointmentsCollection
+        .where('doctorLoginId', isEqualTo: doctorLoginId)
+        .where('called', isEqualTo: true)
+        .where('completed', isEqualTo: false)
+        .snapshots()
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => {'id': doc.id, ...doc.data()})
+              .where((a) => (a['date'] as String? ?? '').startsWith(today))
+              .toList(),
+        );
+  }
+
+  /// Marks a called appointment as fully finished (treatment done). Only
+  /// then does it disappear from the patient's active-queue view.
+  static Future<void> markAppointmentCompleted(String appointmentId) {
+    return _withRetry(
+      () => _appointmentsCollection.doc(appointmentId).update({
+        'completed': true,
+      }),
+    );
+  }
+
+  /// Persists a treatment record (filled in by the doctor when marking an
+  /// appointment complete) so patient treatment history survives restarts.
+  static Future<void> addTreatmentRecord({
+    required String doctorLoginId,
+    required String doctorName,
+    required String patientName,
+    String? patientUserId,
+    required String treatmentType,
+    required String bodyPart,
+    required int setCount,
+    required String dateIso,
+    String? note,
+  }) {
+    return _withRetry(
+      () => _treatmentHistoryCollection.add({
+        'doctorLoginId': doctorLoginId,
+        'doctorName': doctorName,
+        'patientName': patientName,
+        if (patientUserId != null) 'patientUserId': patientUserId,
+        'treatmentType': treatmentType,
+        'bodyPart': bodyPart,
+        'setCount': setCount,
+        'dateIso': dateIso,
+        if (note != null && note.isNotEmpty) 'note': note,
+        'createdAt': FieldValue.serverTimestamp(),
+      }),
+    );
+  }
+
+  static TreatmentHistoryItem _treatmentFromDoc(
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
+    final data = doc.data();
+    return TreatmentHistoryItem(
+      doctorLoginId: data['doctorLoginId'] as String? ?? '',
+      patientName: data['patientName'] as String? ?? '',
+      treatmentType: data['treatmentType'] as String? ?? '',
+      bodyPart: data['bodyPart'] as String? ?? '',
+      setCount: (data['setCount'] as num?)?.toInt() ?? 0,
+      dateIso: data['dateIso'] as String? ?? '',
+      note: data['note'] as String?,
+    );
+  }
+
+  /// Real, persisted treatment records for a doctor (separate from the
+  /// static demo `_treatmentHistory` list below).
+  static Stream<List<TreatmentHistoryItem>> watchTreatmentsForDoctor(
+    String doctorLoginId,
+  ) {
+    return _treatmentHistoryCollection
+        .where('doctorLoginId', isEqualTo: doctorLoginId)
+        .snapshots()
+        .map(
+          (snapshot) => snapshot.docs.map(_treatmentFromDoc).toList()
+            ..sort((a, b) => b.dateIso.compareTo(a.dateIso)),
+        );
+  }
+
+  /// Active (not-yet-completed) appointments for a patient — stays visible
+  /// through "waiting" and "called/in progress" until the doctor marks it
+  /// complete, not just until they're called.
   static Stream<List<Map<String, dynamic>>> watchAppointmentsForPatient(
     String userId,
   ) {
     final today = _todayKey();
     return _appointmentsCollection
         .where('userId', isEqualTo: userId)
-        .where('called', isEqualTo: false)
+        .where('completed', isEqualTo: false)
         .snapshots()
         .map(
           (snapshot) => snapshot.docs

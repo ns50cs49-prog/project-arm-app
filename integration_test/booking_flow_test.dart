@@ -14,7 +14,7 @@ void main() {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-    FirebaseFirestore.instance.useFirestoreEmulator('10.10.0.135', 8080);
+    FirebaseFirestore.instance.useFirestoreEmulator('10.10.0.169', 8080);
   });
 
   testWidgets(
@@ -40,6 +40,7 @@ void main() {
 
       final queueNumber = await DoctorRepository.bookAvailabilitySlot(
         availabilityId: slot.id!,
+        selectedTimeHHmm: slot.startHHmm,
         appointmentData: {
           'userId': 'test-uid',
           'displayName': 'Test Patient',

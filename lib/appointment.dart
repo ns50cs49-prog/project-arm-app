@@ -16,6 +16,14 @@ class AppointmentPage extends StatelessWidget {
     final dateText = date != null ? '${date.day} ${_thaiMonth(date.month)} ${date.year + 543}' : 'ไม่ระบุวันที่';
     final time = data?['time']?.toString() ?? 'ไม่ระบุเวลา';
     final location = data?['location']?.toString() ?? 'Arm care Physical Therapy Clinic';
+    final doctorName = data?['doctorName']?.toString() ?? 'ไม่ระบุแพทย์';
+    final displayName = (data?['displayName'] as String?)?.trim();
+    final email = (data?['email'] as String?)?.trim();
+    final patientName = (displayName != null && displayName.isNotEmpty)
+        ? displayName
+        : (email != null && email.isNotEmpty)
+        ? email
+        : 'ผู้ป่วย';
 
     return Scaffold(
       backgroundColor: const Color(0xfff7fcfd),
@@ -35,7 +43,7 @@ class AppointmentPage extends StatelessWidget {
             child: Column(children: [
               Container(padding: const EdgeInsets.all(18), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), boxShadow: const [BoxShadow(color: Color(0x123a9da2), blurRadius: 12, offset: Offset(0, 4))]), child: const Column(children: [CircleAvatar(radius: 31, backgroundColor: Color(0xffdef7f5), child: Icon(Icons.check_circle_rounded, size: 48, color: Color(0xff14aa9d))), SizedBox(height: 12), Text('จองคิวสำเร็จ', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w700, color: Color(0xff17616a))), SizedBox(height: 5), Text('เราได้บันทึกนัดหมายของคุณเรียบร้อยแล้ว', style: TextStyle(fontSize: 10, color: Color(0xff6d999d)))])),
               const SizedBox(height: 16),
-              Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xffd8eff1))), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('รายละเอียดนัดหมาย', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xff215b62))), const SizedBox(height: 14), _AppointmentRow(icon: Icons.confirmation_number_outlined, title: 'หมายเลขคิว', value: queue), const Divider(height: 19, color: Color(0xffe5f1f2)), _AppointmentRow(icon: Icons.calendar_month_outlined, title: 'วันนัดหมาย', value: dateText), const Divider(height: 19, color: Color(0xffe5f1f2)), _AppointmentRow(icon: Icons.access_time_rounded, title: 'เวลา', value: time), const Divider(height: 19, color: Color(0xffe5f1f2)), _AppointmentRow(icon: Icons.location_on_outlined, title: 'สถานที่', value: location) ])),
+              Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xffd8eff1))), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('รายละเอียดนัดหมาย', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xff215b62))), const SizedBox(height: 14), _AppointmentRow(icon: Icons.confirmation_number_outlined, title: 'หมายเลขคิว', value: queue), const Divider(height: 19, color: Color(0xffe5f1f2)), _AppointmentRow(icon: Icons.medical_services_outlined, title: 'แพทย์', value: doctorName), const Divider(height: 19, color: Color(0xffe5f1f2)), _AppointmentRow(icon: Icons.person_outline_rounded, title: 'ผู้ป่วย', value: patientName), const Divider(height: 19, color: Color(0xffe5f1f2)), _AppointmentRow(icon: Icons.calendar_month_outlined, title: 'วันนัดหมาย', value: dateText), const Divider(height: 19, color: Color(0xffe5f1f2)), _AppointmentRow(icon: Icons.access_time_rounded, title: 'เวลา', value: time), const Divider(height: 19, color: Color(0xffe5f1f2)), _AppointmentRow(icon: Icons.location_on_outlined, title: 'สถานที่', value: location) ])),
               const SizedBox(height: 15),
               const Text('กรุณามาก่อนเวลานัดหมาย 15 นาที', style: TextStyle(fontSize: 10, color: Color(0xff668d92))),
             ]),

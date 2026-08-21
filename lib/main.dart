@@ -21,7 +21,7 @@ Future<void> main() async {
     // Android Firestore SDK's gRPC channel misbehaves over the adb reverse
     // loopback tunnel (spurious "Channel shutdownNow" errors). Phone and PC
     // must be on the same WiFi network. Update this IP if it changes.
-    FirebaseFirestore.instance.useFirestoreEmulator('10.10.0.135', 8080);
+    FirebaseFirestore.instance.useFirestoreEmulator('10.10.0.169', 8080);
   }
 
   runApp(const QueueApp());

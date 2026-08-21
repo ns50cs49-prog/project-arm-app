@@ -190,6 +190,119 @@ class _DoctorPageState extends State<DoctorPage> {
     }
   }
 
+  Future<void> _completeAppointment(Map<String, dynamic> booking) async {
+    final id = booking['id'] as String;
+    final userId = booking['userId'] as String?;
+    final name = _bookingPatientName(booking);
+
+    final treatmentTypeController = TextEditingController();
+    final bodyPartController = TextEditingController();
+    final setCountController = TextEditingController();
+    final noteController = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('บันทึกประวัติการรักษา'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'ผู้ป่วย: $name',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: treatmentTypeController,
+                decoration: const InputDecoration(
+                  labelText: 'ประเภทการรักษา',
+                  hintText: 'เช่น กายภาพบำบัดข้อเข่า',
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: bodyPartController,
+                decoration: const InputDecoration(
+                  labelText: 'กายภาพส่วนไหน',
+                  hintText: 'เช่น ข้อเข่า',
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: setCountController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'จำนวนเซ็ต'),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: noteController,
+                decoration: const InputDecoration(labelText: 'หมายเหตุ (ถ้ามี)'),
+                maxLines: 2,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('ยกเลิก'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('บันทึก'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) {
+      treatmentTypeController.dispose();
+      bodyPartController.dispose();
+      setCountController.dispose();
+      noteController.dispose();
+      return;
+    }
+
+    final treatmentType = treatmentTypeController.text.trim();
+    final bodyPart = bodyPartController.text.trim();
+    final setCount = int.tryParse(setCountController.text.trim()) ?? 0;
+    final note = noteController.text.trim();
+    treatmentTypeController.dispose();
+    bodyPartController.dispose();
+    setCountController.dispose();
+    noteController.dispose();
+
+    try {
+      await Future.wait([
+        DoctorRepository.markAppointmentCompleted(
+          id,
+        ).timeout(const Duration(seconds: 10)),
+        DoctorRepository.addTreatmentRecord(
+          doctorLoginId: widget.doctor.loginId,
+          doctorName: widget.doctor.name,
+          patientName: name,
+          patientUserId: userId,
+          treatmentType: treatmentType.isEmpty ? 'กายภาพบำบัด' : treatmentType,
+          bodyPart: bodyPart.isEmpty ? 'ไม่ระบุ' : bodyPart,
+          setCount: setCount,
+          dateIso: DateTime.now().toIso8601String(),
+          note: note,
+        ).timeout(const Duration(seconds: 10)),
+      ]);
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('$nameเสร็จสิ้นการรักษาแล้ว')));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('บันทึกไม่สำเร็จ: $error')));
+    }
+  }
+
   void _logout() {
     Navigator.of(
       context,
@@ -427,70 +540,108 @@ class _DoctorPageState extends State<DoctorPage> {
               },
             ),
             const SizedBox(height: 20),
-            const Text(
-              'คิวที่กำลังรอ',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 12),
             StreamBuilder<List<Map<String, dynamic>>>(
-              stream: DoctorRepository.watchAppointmentsForDoctor(
+              stream: DoctorRepository.watchInProgressAppointmentsForDoctor(
                 widget.doctor.loginId,
               ),
-              builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    child: Text(
-                      'โหลดรายชื่อคิวไม่สำเร็จ: ${snapshot.error}',
-                      style: const TextStyle(color: Color(0xffe64051)),
-                    ),
-                  );
-                }
-                final bookings = snapshot.data ?? const [];
+              builder: (context, inProgressSnapshot) {
+                final inProgress = inProgressSnapshot.data ?? const [];
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (bookings.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 16),
-                        child: Text(
-                          'ยังไม่มีผู้ป่วยรอคิว',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Color(0xff6b8e91)),
+                    if (inProgress.isNotEmpty) ...[
+                      const Text(
+                        'กำลังใช้งาน',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
                         ),
-                      )
-                    else
-                      ...bookings.asMap().entries.map(
-                        (entry) => Padding(
+                      ),
+                      const SizedBox(height: 12),
+                      ...inProgress.map(
+                        (appt) => Padding(
                           padding: const EdgeInsets.only(bottom: 10),
-                          child: _QueueRow(
-                            position: entry.key + 1,
-                            booking: entry.value,
+                          child: _InProgressRow(
+                            booking: appt,
+                            onComplete: () => _completeAppointment(appt),
                           ),
                         ),
                       ),
-                    const SizedBox(height: 6),
-                    SizedBox(
-                      height: 52,
-                      child: ElevatedButton(
-                        onPressed: bookings.isEmpty
-                            ? null
-                            : () => _callNextQueue(bookings.first),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xff13a2ac),
-                          disabledBackgroundColor: const Color(0xffb9dde0),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ),
-                        child: const Text(
-                          'เรียกคิว',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
+                      const SizedBox(height: 8),
+                    ],
+                    const Text(
+                      'คิวที่กำลังรอ',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 12),
+                    StreamBuilder<List<Map<String, dynamic>>>(
+                      stream: DoctorRepository.watchAppointmentsForDoctor(
+                        widget.doctor.loginId,
                       ),
+                      builder: (context, snapshot) {
+                        if (snapshot.hasError) {
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            child: Text(
+                              'โหลดรายชื่อคิวไม่สำเร็จ: ${snapshot.error}',
+                              style: const TextStyle(color: Color(0xffe64051)),
+                            ),
+                          );
+                        }
+                        final bookings = snapshot.data ?? const [];
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (bookings.isEmpty)
+                              const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 16),
+                                child: Text(
+                                  'ยังไม่มีผู้ป่วยรอคิว',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: Color(0xff6b8e91)),
+                                ),
+                              )
+                            else
+                              ...bookings.asMap().entries.map(
+                                (entry) => Padding(
+                                  padding: const EdgeInsets.only(bottom: 10),
+                                  child: _QueueRow(
+                                    position: entry.key + 1,
+                                    booking: entry.value,
+                                  ),
+                                ),
+                              ),
+                            const SizedBox(height: 6),
+                            SizedBox(
+                              height: 52,
+                              child: ElevatedButton(
+                                onPressed:
+                                    (bookings.isEmpty || inProgress.isNotEmpty)
+                                    ? null
+                                    : () => _callNextQueue(bookings.first),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xff13a2ac),
+                                  disabledBackgroundColor: const Color(
+                                    0xffb9dde0,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                ),
+                                child: Text(
+                                  inProgress.isNotEmpty
+                                      ? 'กำลังใช้งานอยู่'
+                                      : 'เรียกคิว',
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
                     ),
                   ],
                 );
@@ -505,21 +656,40 @@ class _DoctorPageState extends State<DoctorPage> {
   Widget _buildHistoryTab() {
     final records = _historyForDoctor;
     return SafeArea(
-      child: records.isEmpty
-          ? const Center(
+      child: StreamBuilder<List<TreatmentHistoryItem>>(
+        stream: DoctorRepository.watchTreatmentsForDoctor(
+          widget.doctor.loginId,
+        ),
+        builder: (context, snapshot) {
+          final realRecords = snapshot.data ?? const [];
+          if (realRecords.isEmpty && records.isEmpty) {
+            return const Center(
               child: Text(
                 'ยังไม่มีประวัติการรักษา',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Color(0xff6b8e91)),
               ),
-            )
-          : ListView.separated(
-              padding: const EdgeInsets.all(16),
-              itemCount: records.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 12),
-              itemBuilder: (context, index) =>
-                  _HistoryCard(record: records[index]),
-            ),
+            );
+          }
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              ...realRecords.map(
+                (item) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _TreatmentHistoryCard(record: item),
+                ),
+              ),
+              ...records.map(
+                (record) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _HistoryCard(record: record),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 
@@ -625,7 +795,15 @@ class _DoctorPageState extends State<DoctorPage> {
 
   @override
   Widget build(BuildContext context) {
-    final pages = [_buildHomeTab(), _buildHistoryTab(), _buildProfileTab()];
+    // Build only the visible tab — an IndexedStack here would keep every
+    // tab's StreamBuilders (Firestore listeners) subscribed at once, even
+    // for tabs the user isn't looking at, which piles up watch streams and
+    // can trip the local emulator's "too_many_pings" abuse protection.
+    final Widget body = switch (_selectedTab) {
+      0 => _buildHomeTab(),
+      1 => _buildHistoryTab(),
+      _ => _buildProfileTab(),
+    };
 
     return Scaffold(
       appBar: AppBar(
@@ -639,7 +817,7 @@ class _DoctorPageState extends State<DoctorPage> {
           ),
         ],
       ),
-      body: IndexedStack(index: _selectedTab, children: pages),
+      body: body,
       bottomNavigationBar: Container(
         height: 70,
         decoration: const BoxDecoration(
@@ -844,6 +1022,162 @@ class _QueueRow extends StatelessWidget {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InProgressRow extends StatelessWidget {
+  const _InProgressRow({required this.booking, required this.onComplete});
+
+  final Map<String, dynamic> booking;
+  final VoidCallback onComplete;
+
+  @override
+  Widget build(BuildContext context) {
+    final queueNumber = booking['queueNumber'] as String? ?? '-';
+    final time = (booking['time'] as String?)?.trim();
+    final name = _bookingPatientName(booking);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xfffff8ec),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xffffdca0)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(
+              color: Color(0xffffedcb),
+              shape: BoxShape.circle,
+            ),
+            child: Text(
+              queueNumber,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Color(0xffb9790a),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xff114d58),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'กำลังใช้งาน${(time == null || time.isEmpty) ? '' : ' • $time'}',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xffb9790a),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: onComplete,
+            style: TextButton.styleFrom(
+              backgroundColor: const Color(0xff13a2ac),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            child: const Text(
+              'เสร็จสิ้น',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TreatmentHistoryCard extends StatelessWidget {
+  const _TreatmentHistoryCard({required this.record});
+
+  final TreatmentHistoryItem record;
+
+  @override
+  Widget build(BuildContext context) {
+    final date = DateTime.tryParse(record.dateIso);
+    final dateText = date != null
+        ? '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}'
+        : record.dateIso;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xffd8eef0)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x12000000),
+            blurRadius: 8,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                record.patientName,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xff114d58),
+                ),
+              ),
+              const Text(
+                'เสร็จสิ้น',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xff0f979f),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'วันที่: $dateText',
+            style: const TextStyle(fontSize: 12, color: Color(0xff285e65)),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'การรักษา: ${record.treatmentType} • ${record.bodyPart} • ${record.setCount} เซ็ต',
+            style: const TextStyle(fontSize: 12, color: Color(0xff285e65)),
+          ),
+          if (record.note != null && record.note!.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              'หมายเหตุ: ${record.note}',
+              style: const TextStyle(fontSize: 12, color: Color(0xff285e65)),
+            ),
+          ],
         ],
       ),
     );

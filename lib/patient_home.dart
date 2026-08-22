@@ -137,12 +137,103 @@ class _PatientHomePageState extends State<PatientHomePage> {
       compact: compact,
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-<<<<<<< HEAD
         child: Column(
           children: [
             const SizedBox(height: 8),
             const _HomeProfileCard(),
             const SizedBox(height: 14),
+            StreamBuilder<DatabaseEvent>(
+              stream: FirebaseDatabase.instance.ref('esp32/led').onValue,
+              builder: (context, snapshot) {
+                final data = snapshot.data?.snapshot.value;
+                final map = data is Map
+                    ? Map<String, dynamic>.from(data)
+                    : <String, dynamic>{};
+                final rawStatus = map['status'] ?? map['state'];
+                final status = rawStatus?.toString().toUpperCase() ?? '';
+                final updatedAtValue =
+                    map['updatedAt'] ??
+                    map['timestamp'] ??
+                    map['lastSeen'] ??
+                    map['time'];
+
+                final deviceState = _resolveDeviceHealth(
+                  rawStatus: rawStatus,
+                  updatedAtValue: updatedAtValue,
+                );
+
+                final label = switch (deviceState) {
+                  DeviceHealthState.working => 'กำลังทำงาน',
+                  DeviceHealthState.online => 'ออนไลน์',
+                  DeviceHealthState.offline => 'ออฟไลน์',
+                };
+                final color = switch (deviceState) {
+                  DeviceHealthState.working => const Color(0xff0d9984),
+                  DeviceHealthState.online => const Color(0xfff39a1d),
+                  DeviceHealthState.offline => const Color(0xff7a8d92),
+                };
+
+                return Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(18),
+                  margin: const EdgeInsets.only(bottom: 14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(22),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x120d7b82),
+                        blurRadius: 12,
+                        offset: Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'สถานะเครื่องกายภาพ',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xff114d58),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Container(
+                            width: 16,
+                            height: 16,
+                            decoration: BoxDecoration(
+                              color: color,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Text(
+                            label,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: color,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        'status: $status',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Color(0xff5f8d93),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
             if (user == null)
               _NoBookingCard(
                 message: 'กรุณาเข้าสู่ระบบ',
@@ -204,101 +295,6 @@ class _PatientHomePageState extends State<PatientHomePage> {
                 },
               ),
           ],
-=======
-        child: StreamBuilder<DatabaseEvent>(
-          stream: FirebaseDatabase.instance.ref('esp32/led').onValue,
-          builder: (context, snapshot) {
-            final data = snapshot.data?.snapshot.value;
-            final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
-            final rawStatus = map['status'] ?? map['state'];
-            final status = rawStatus?.toString().toUpperCase() ?? '';
-            final updatedAtValue =
-                map['updatedAt'] ??
-                map['timestamp'] ??
-                map['lastSeen'] ??
-                map['time'];
-
-            final deviceState = _resolveDeviceHealth(
-              rawStatus: rawStatus,
-              updatedAtValue: updatedAtValue,
-            );
-
-            final label = switch (deviceState) {
-              DeviceHealthState.working => 'กำลังทำงาน',
-              DeviceHealthState.online => 'ออนไลน์',
-              DeviceHealthState.offline => 'ออฟไลน์',
-            };
-            final color = switch (deviceState) {
-              DeviceHealthState.working => const Color(0xff0d9984),
-              DeviceHealthState.online => const Color(0xfff39a1d),
-              DeviceHealthState.offline => const Color(0xff7a8d92),
-            };
-
-            return Column(
-              children: [
-                const SizedBox(height: 8),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(18),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(22),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x120d7b82),
-                        blurRadius: 12,
-                        offset: Offset(0, 6),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'สถานะเครื่องกายภาพ',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xff114d58),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Container(
-                            width: 16,
-                            height: 16,
-                            decoration: BoxDecoration(
-                              color: color,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Text(
-                            label,
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: color,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 14),
-                      Text(
-                        'status: $status',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: Color(0xff5f8d93),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            );
-          },
->>>>>>> 67c2897 (TEST)
         ),
       ),
     );

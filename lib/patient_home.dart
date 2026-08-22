@@ -45,26 +45,49 @@ class _PatientHomePageState extends State<PatientHomePage> {
     Duration staleThreshold = const Duration(seconds: 30),
   }) {
     final currentTime = now ?? DateTime.now();
-    final normalized = rawStatus?.toString().trim().toLowerCase() ?? '';
+    final normalized = (rawStatus?.toString().trim().toLowerCase() ?? '')
+        .replaceAll(' ', '')
+        .replaceAll('"', '')
+        .replaceAll("'", '')
+        .replaceAll('`', '')
+        .replaceAll('\n', '')
+        .replaceAll('\r', '');
     final lastUpdatedAt = _parseTimestamp(updatedAtValue);
     final isFresh = lastUpdatedAt != null &&
         currentTime.difference(lastUpdatedAt) <= staleThreshold;
 
     if (normalized == 'working' ||
         normalized == 'on' ||
-        normalized == 'running') {
+        normalized == 'running' ||
+        normalized == 'ทำงาน' ||
+        normalized == 'กำลังทำงาน') {
       return DeviceHealthState.working;
     }
 
-    if (normalized == 'connected' || normalized == 'online') {
-      return isFresh ? DeviceHealthState.online : DeviceHealthState.offline;
+    if (normalized == 'connected' ||
+        normalized == 'online' ||
+        normalized == 'ready' ||
+        normalized == 'ออนไลน์' ||
+        normalized == 'พร้อมใช้งาน' ||
+        normalized == 'ใช้งานได้') {
+      return isFresh || lastUpdatedAt == null
+          ? DeviceHealthState.online
+          : DeviceHealthState.offline;
     }
 
-    if (normalized == 'offline' || normalized == 'off') {
+    if (normalized == 'offline' ||
+        normalized == 'off' ||
+        normalized == 'ออฟไลน์' ||
+        normalized == 'ปิด' ||
+        normalized == 'disconnected' ||
+        normalized == 'stop' ||
+        normalized == 'stopped') {
       return DeviceHealthState.offline;
     }
 
-    return isFresh ? DeviceHealthState.online : DeviceHealthState.offline;
+    return isFresh || lastUpdatedAt == null
+        ? DeviceHealthState.online
+        : DeviceHealthState.offline;
   }
 
   void _setTab(int value) => setState(() => _selectedTab = value);

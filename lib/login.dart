@@ -42,17 +42,16 @@ class _LoginPageState extends State<LoginPage> {
 
     setState(() => _isLoading = true);
 
-    final doctor = DoctorRepository.findByEmailAndLoginId(email, password);
-    if (doctor != null) {
-      if (!mounted) return;
-      setState(() => _isLoading = false);
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => DoctorPage(doctor: doctor)),
-      );
-      return;
-    }
-
     try {
+      final doctor = await DoctorRepository.findDoctorAccount(email, password);
+      if (doctor != null) {
+        if (!mounted) return;
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => DoctorPage(doctor: doctor)),
+        );
+        return;
+      }
+
       await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
         password: password,

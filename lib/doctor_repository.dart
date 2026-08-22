@@ -49,11 +49,13 @@ class DoctorAccount {
     required this.name,
     required this.email,
     required this.loginId,
+    this.phoneNumber = '',
   });
 
   final String name;
   final String email;
   final String loginId;
+  final String phoneNumber;
 }
 
 class TreatmentHistoryItem {
@@ -64,6 +66,7 @@ class TreatmentHistoryItem {
     required this.bodyPart,
     required this.setCount,
     required this.dateIso,
+    this.patientUserId,
     this.note,
   });
 
@@ -73,7 +76,22 @@ class TreatmentHistoryItem {
   final String bodyPart;
   final int setCount;
   final String dateIso;
+  final String? patientUserId;
   final String? note;
+}
+
+class PatientRecord {
+  const PatientRecord({
+    required this.id,
+    required this.name,
+    this.email = '',
+    this.phone = '',
+  });
+
+  final String id;
+  final String name;
+  final String email;
+  final String phone;
 }
 
 class DoctorRepository {
@@ -158,10 +176,55 @@ class DoctorRepository {
     'treatmentHistory',
   );
 
+  static final CollectionReference<Map<String, dynamic>> _doctorCollection =
+      FirebaseFirestore.instance.collection('doctors');
+
   static List<DoctorAccount> get doctors => List.unmodifiable(_doctors);
 
   static void addDoctor(DoctorAccount doctor) {
     _doctors.add(doctor);
+  }
+
+  static Future<void> createDoctorAccount(DoctorAccount doctor) async {
+    await _doctorCollection.doc(doctor.loginId.trim()).set({
+      'name': doctor.name,
+      'email': doctor.email,
+      'loginId': doctor.loginId,
+      'phoneNumber': doctor.phoneNumber,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+    if (!_doctors.any((item) => item.loginId == doctor.loginId)) {
+      addDoctor(doctor);
+    }
+  }
+
+  static Future<DoctorAccount?> findDoctorAccount(
+    String email,
+    String loginId,
+  ) async {
+    final localDoctor = findByEmailAndLoginId(email, loginId);
+    if (localDoctor != null) return localDoctor;
+
+    final snapshot = await _doctorCollection
+        .where('email', isEqualTo: email.trim())
+        .get();
+    for (final doc in snapshot.docs) {
+      final data = doc.data();
+      if ((data['loginId'] as String? ?? doc.id).trim() != loginId.trim()) {
+        continue;
+      }
+      final doctor = DoctorAccount(
+        name: data['name'] as String? ?? 'หมอ',
+        email: data['email'] as String? ?? '',
+        loginId: data['loginId'] as String? ?? doc.id,
+        phoneNumber: data['phoneNumber'] as String? ?? '',
+      );
+      if (!_doctors.any((item) => item.loginId == doctor.loginId)) {
+        addDoctor(doctor);
+      }
+      return doctor;
+    }
+    return null;
   }
 
   static void removeDoctor(String loginId) {
@@ -363,7 +426,8 @@ class DoctorRepository {
         'doctorLoginId': doctorLoginId,
         'doctorName': doctorName,
         'patientName': patientName,
-        if (patientUserId != null) 'patientUserId': patientUserId,
+        if (patientUserId != null && patientUserId.isNotEmpty)
+          'patientUserId': patientUserId,
         'treatmentType': treatmentType,
         'bodyPart': bodyPart,
         'setCount': setCount,
@@ -385,6 +449,7 @@ class DoctorRepository {
       bodyPart: data['bodyPart'] as String? ?? '',
       setCount: (data['setCount'] as num?)?.toInt() ?? 0,
       dateIso: data['dateIso'] as String? ?? '',
+      patientUserId: data['patientUserId'] as String?,
       note: data['note'] as String?,
     );
   }
@@ -491,8 +556,228 @@ class DoctorRepository {
     }).toList();
   }
 
+  static String _patientIdForName(String patientName, int index) {
+    final code = (index + 1).toString().padLeft(3, '0');
+    return 'p-$code';
+  }
+
+  static List<PatientRecord> getPatientRecords() {
+    final ordered = <String, PatientRecord>{};
+
+    for (final entry in _treatmentHistory) {
+      final patientName = entry.patientName.trim();
+      final patientId = (entry.patientUserId ?? '').trim();
+      if (patientId.isNotEmpty) {
+        ordered.putIfAbsent(
+          patientId,
+          () => PatientRecord(id: patientId, name: patientName),
+        );
+        continue;
+      }
+      if (patientName.isEmpty) continue;
+      final key = patientName.toLowerCase();
+      ordered.putIfAbsent(
+        key,
+        () => PatientRecord(
+          id: _patientIdForName(patientName, ordered.length),
+          name: patientName,
+        ),
+      );
+    }
+
+    return ordered.values.toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+  }
+
+  static Future<List<PatientRecord>> getPatientRecordsFuture() async {
+    final recordsById = <String, PatientRecord>{};
+    final deletedUserIds = <String>{};
+
+    void addRecord(
+      String? patientId,
+      String? patientName, {
+      String? email,
+      String? phone,
+    }) {
+      final id = (patientId ?? '').trim();
+      final name = (patientName ?? '').trim();
+      if (id.isEmpty && name.isEmpty) return;
+      if (id.isNotEmpty && deletedUserIds.contains(id)) return;
+
+      if (id.isNotEmpty) {
+        recordsById.putIfAbsent(
+          id,
+          () => PatientRecord(
+            id: id,
+            name: name.isNotEmpty ? name : 'ผู้ป่วย',
+            email: (email ?? '').trim(),
+            phone: (phone ?? '').trim(),
+          ),
+        );
+        return;
+      }
+
+      final fallbackKey = name.isEmpty ? 'unknown' : name.toLowerCase();
+      recordsById.putIfAbsent(
+        fallbackKey,
+        () => PatientRecord(
+          id: 'p-${recordsById.length + 1}'.padRight(10, '0').replaceAll(' ', ''),
+          name: name,
+          email: (email ?? '').trim(),
+          phone: (phone ?? '').trim(),
+        ),
+      );
+    }
+
+    final usersSnapshot = await FirebaseFirestore.instance.collection('users').get();
+    for (final doc in usersSnapshot.docs) {
+      final data = doc.data();
+      if (data['deletedAt'] != null) {
+        deletedUserIds.add(doc.id);
+        continue;
+      }
+      addRecord(
+        doc.id,
+        data['name'] as String?,
+        email: data['email'] as String?,
+        phone: data['phone'] as String?,
+      );
+    }
+
+    final treatmentSnapshot = await _treatmentHistoryCollection.get();
+    for (final doc in treatmentSnapshot.docs) {
+      final data = doc.data();
+      addRecord(
+        data['patientUserId'] as String?,
+        data['patientName'] as String?,
+      );
+    }
+
+    final appointmentsSnapshot = await _appointmentsCollection.get();
+    for (final doc in appointmentsSnapshot.docs) {
+      final data = doc.data();
+      addRecord(
+        data['userId'] as String?,
+        (data['displayName'] as String?) ??
+            (data['email'] as String?) ??
+            (data['patientName'] as String?),
+        email: data['email'] as String?,
+        phone: data['phone'] as String?,
+      );
+    }
+
+    if (recordsById.isEmpty) {
+      return getPatientRecords();
+    }
+
+    final records = recordsById.values.toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+    return records;
+  }
+
+  static Future<void> updateDoctorAccount({
+    required String previousLoginId,
+    required DoctorAccount doctor,
+  }) async {
+    final oldId = previousLoginId.trim();
+    final newId = doctor.loginId.trim();
+    final snapshots = await Future.wait([
+      _appointmentsCollection.where('doctorLoginId', isEqualTo: oldId).get(),
+      _treatmentHistoryCollection.where('doctorLoginId', isEqualTo: oldId).get(),
+    ]);
+    final batch = FirebaseFirestore.instance.batch();
+    for (final snapshot in snapshots) {
+      for (final doc in snapshot.docs) {
+        batch.update(doc.reference, {
+          'doctorLoginId': newId,
+          'doctorName': doctor.name,
+        });
+      }
+    }
+    if (oldId != newId) {
+      final oldAvailability = await _availabilityCollection.doc(oldId).get();
+      if (oldAvailability.exists) {
+        batch.set(_availabilityCollection.doc(newId), {
+          ...oldAvailability.data()!,
+          'doctorLoginId': newId,
+        });
+        batch.delete(oldAvailability.reference);
+      }
+    }
+    await batch.commit();
+    await _doctorCollection.doc(oldId).delete();
+    await _doctorCollection.doc(newId).set({
+      'name': doctor.name,
+      'email': doctor.email,
+      'loginId': newId,
+      'phoneNumber': doctor.phoneNumber,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    final index = _doctors.indexWhere((item) => item.loginId == oldId);
+    if (index != -1) _doctors[index] = doctor;
+  }
+
+  static Future<void> deleteDoctorAccount(String loginId) async {
+    final id = loginId.trim();
+    final snapshots = await Future.wait([
+      _appointmentsCollection.where('doctorLoginId', isEqualTo: id).get(),
+      _treatmentHistoryCollection.where('doctorLoginId', isEqualTo: id).get(),
+    ]);
+    final refs = <DocumentReference<Map<String, dynamic>>>[
+      _availabilityCollection.doc(id),
+    ];
+    for (final snapshot in snapshots) {
+      refs.addAll(snapshot.docs.map((doc) => doc.reference));
+    }
+    final uniqueRefs = refs.toSet().toList();
+    for (var start = 0; start < uniqueRefs.length; start += 500) {
+      final batch = FirebaseFirestore.instance.batch();
+      final end = start + 500 < uniqueRefs.length
+          ? start + 500
+          : uniqueRefs.length;
+      for (final ref in uniqueRefs.sublist(start, end)) {
+        batch.delete(ref);
+      }
+      await batch.commit();
+    }
+    await _doctorCollection.doc(id).delete();
+    removeDoctor(id);
+  }
+
+  /// Deletes the patient's Firestore profile and all appointment/treatment
+  /// documents linked to that account. Firebase Authentication accounts must
+  /// be deleted through the Admin SDK on a trusted server.
+  static Future<void> deletePatientAccount({
+    required String patientId,
+  }) async {
+    final userId = patientId.trim();
+    final refs = <DocumentReference<Map<String, dynamic>>>[
+      FirebaseFirestore.instance.collection('users').doc(userId),
+    ];
+
+    final snapshots = await Future.wait([
+      _appointmentsCollection.where('userId', isEqualTo: userId).get(),
+      _treatmentHistoryCollection.where('patientUserId', isEqualTo: userId).get(),
+    ]);
+    for (final snapshot in snapshots) {
+      refs.addAll(snapshot.docs.map((doc) => doc.reference));
+    }
+
+    final uniqueRefs = refs.toSet().toList();
+    for (var start = 0; start < uniqueRefs.length; start += 500) {
+      final batch = FirebaseFirestore.instance.batch();
+      final end = start + 500 < uniqueRefs.length
+          ? start + 500
+          : uniqueRefs.length;
+      for (final ref in uniqueRefs.sublist(start, end)) {
+        batch.delete(ref);
+      }
+      await batch.commit();
+    }
+  }
+
   static List<String> getPatientNames() {
-    return _treatmentHistory.map((entry) => entry.patientName).toSet().toList();
+    return getPatientRecords().map((record) => record.name).toList();
   }
 
   static DoctorAccount? findByEmailAndLoginId(String email, String loginId) {

@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import 'appointment.dart';
@@ -28,6 +29,7 @@ class _AdminHomePageState extends State<AdminHomePage> {
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _loginIdController = TextEditingController();
+  final _phoneController = TextEditingController();
 
   bool _notificationsEnabled = true;
   int _selectedTab = 0;
@@ -44,6 +46,7 @@ class _AdminHomePageState extends State<AdminHomePage> {
     _nameController.clear();
     _emailController.clear();
     _loginIdController.clear();
+    _phoneController.clear();
   }
 
   void _switchAdminMode(AdminMode mode) {
@@ -55,21 +58,32 @@ class _AdminHomePageState extends State<AdminHomePage> {
     });
   }
 
-  void _addDoctor() {
+  Future<void> _addDoctor() async {
     if (!_formKey.currentState!.validate()) return;
 
     final doctor = DoctorAccount(
       name: _nameController.text.trim(),
       email: _emailController.text.trim(),
       loginId: _loginIdController.text.trim(),
+      phoneNumber: _phoneController.text.trim(),
     );
 
-    setState(() {
-      DoctorRepository.addDoctor(doctor);
-    });
+    try {
+      await DoctorRepository.createDoctorAccount(doctor);
+    } on FirebaseException {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('สร้างบัญชีหมอไม่สำเร็จ')),
+        );
+      }
+      return;
+    }
 
     _clearForm();
-    Navigator.of(context).pop();
+    if (mounted) {
+      setState(() {});
+      Navigator.of(context).pop();
+    }
   }
 
   Future<void> _showAddDoctorDialog() async {
@@ -77,38 +91,87 @@ class _AdminHomePageState extends State<AdminHomePage> {
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('เพิ่มข้อมูลหมอ'),
+        backgroundColor: const Color(0xffeefaf9),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(26),
+        ),
+        title: const Text(
+          'เพิ่มข้อมูลหมอ',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            color: Color(0xff114d58),
+          ),
+        ),
         content: Form(
           key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildTextField(
-                controller: _nameController,
-                label: 'ชื่อหมอ',
-                hintText: 'เช่น นพ. สมชาย นาคมศักดิ์',
-              ),
-              const SizedBox(height: 12),
-              _buildTextField(
-                controller: _emailController,
-                label: 'อีเมลหมอ',
-                hintText: 'เช่น doctor@example.com',
-              ),
-              const SizedBox(height: 12),
-              _buildTextField(
-                controller: _loginIdController,
-                label: 'รหัสล็อกอินหมอ',
-                hintText: 'เช่น doc1001',
-              ),
-            ],
+          child: SizedBox(
+            width: 360,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildTextField(
+                  controller: _nameController,
+                  label: 'ชื่อหมอ',
+                  hintText: 'เช่น นพ. สมชาย นาคมศักดิ์',
+                ),
+                const SizedBox(height: 14),
+                _buildTextField(
+                  controller: _emailController,
+                  label: 'อีเมลหมอ',
+                  hintText: 'เช่น doctor@example.com',
+                ),
+                const SizedBox(height: 14),
+                _buildTextField(
+                  controller: _phoneController,
+                  label: 'เบอร์โทรศัพท์หมอ',
+                  hintText: 'เช่น 0812345678',
+                  keyboardType: TextInputType.phone,
+                ),
+                const SizedBox(height: 14),
+                _buildTextField(
+                  controller: _loginIdController,
+                  label: 'รหัสล็อกอินหมอ',
+                  hintText: 'เช่น doc1001',
+                ),
+              ],
+            ),
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('ยกเลิก'),
+          SizedBox(
+            width: double.infinity,
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text(
+                      'ยกเลิก',
+                      style: TextStyle(
+                        color: Color(0xff114d58),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () => _addDoctor(),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xff13a2ac),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text('เพิ่มหมอ'),
+                  ),
+                ),
+              ],
+            ),
           ),
-          ElevatedButton(onPressed: _addDoctor, child: const Text('เพิ่มหมอ')),
         ],
       ),
     );
@@ -377,23 +440,15 @@ class _AdminHomePageState extends State<AdminHomePage> {
                           title: doctor.name,
                           subtitle: 'รหัส: ${doctor.loginId}',
                           selected: false,
-                          onTap: () {
-                            Navigator.of(context).push(
+                          onTap: () async {
+                            await Navigator.of(context).push(
                               MaterialPageRoute(
                                 builder: (_) => DoctorDetailPage(
                                   doctor: doctor,
-                                  onDelete: () {
-                                    setState(() {
-                                      DoctorRepository.removeDoctor(
-                                        doctor.loginId,
-                                      );
-                                      _selectedDoctorLoginId = null;
-                                    });
-                                    Navigator.of(context).pop();
-                                  },
                                 ),
                               ),
                             );
+                            if (mounted) setState(() {});
                           },
                         );
                       },
@@ -406,30 +461,7 @@ class _AdminHomePageState extends State<AdminHomePage> {
   }
 
   Widget _buildPatientManagementScreen() {
-    final patients = DoctorRepository.getPatientNames();
     final patientSearch = _doctorSearch.trim().toLowerCase();
-    final matchingDoctors = patientSearch.isEmpty
-        ? const <DoctorAccount>[]
-        : DoctorRepository.doctors
-              .where(
-                (doctor) => doctor.name.toLowerCase().contains(patientSearch),
-              )
-              .toList();
-    final filteredPatients = patients.where((name) {
-      if (patientSearch.isEmpty) return true;
-      if (name.toLowerCase().contains(patientSearch)) return true;
-      return DoctorRepository.getTreatmentsForPatient(name).any((treatment) {
-        final doctorName = DoctorRepository.doctors
-            .firstWhere(
-              (doctor) => doctor.loginId == treatment.doctorLoginId,
-              orElse: () =>
-                  const DoctorAccount(name: '', email: '', loginId: ''),
-            )
-            .name
-            .toLowerCase();
-        return doctorName.contains(patientSearch);
-      });
-    }).toList();
 
     return SafeArea(
       child: Column(
@@ -448,7 +480,7 @@ class _AdminHomePageState extends State<AdminHomePage> {
                 const SizedBox(width: 8),
                 const Expanded(
                   child: Text(
-                    'ประวัติการรักษา',
+                    'บัญชีผู้เข้ารับการรักษา',
                     style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.w700,
@@ -462,60 +494,69 @@ class _AdminHomePageState extends State<AdminHomePage> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: _SearchInput(
-              hintText: 'ค้นหาชื่อผู้ป่วยหรือชื่อหมอ',
+              hintText: 'ค้นหาชื่อ อีเมล หรือเบอร์โทร',
               value: _doctorSearch,
               onChanged: (value) => setState(() => _doctorSearch = value),
             ),
           ),
           const SizedBox(height: 12),
-          if (matchingDoctors.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(
-                children: [
-                  for (final doctor in matchingDoctors) ...[
-                    _buildDoctorDetailCard(doctor),
-                    const SizedBox(height: 12),
-                  ],
-                ],
-              ),
-            ),
           Expanded(
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16),
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: const Color(0xffd8f3f2),
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: filteredPatients.isEmpty
-                  ? const Center(
-                      child: Text(
-                        'ไม่พบผู้ป่วยที่ค้นหา',
-                        style: TextStyle(color: Color(0xff5b8a8f)),
-                      ),
-                    )
-                  : ListView.separated(
-                      itemCount: filteredPatients.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 10),
-                      itemBuilder: (context, index) {
-                        final patient = filteredPatients[index];
-                        return _SelectionTile(
-                          title: patient,
-                          subtitle:
-                              'เคยกายภาพกับ ${DoctorRepository.getTreatmentsForPatient(patient).length} หมอ',
-                          selected: false,
-                          onTap: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) =>
-                                    PatientHistoryPage(patientName: patient),
-                              ),
+            child: FutureBuilder<List<PatientRecord>>(
+              future: DoctorRepository.getPatientRecordsFuture(),
+              builder: (context, snapshot) {
+                final patients = snapshot.data ?? DoctorRepository.getPatientRecords();
+                final filteredPatients = patients.where((record) {
+                  if (patientSearch.isEmpty) return true;
+                  if (record.name.toLowerCase().contains(patientSearch)) return true;
+                  if (record.id.toLowerCase().contains(patientSearch)) return true;
+                  if (record.email.toLowerCase().contains(patientSearch)) return true;
+                  return record.phone.toLowerCase().contains(patientSearch);
+                }).toList();
+
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(
+                    child: CircularProgressIndicator(
+                      color: Color(0xff13a2ac),
+                    ),
+                  );
+                }
+
+                return Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 16),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xffd8f3f2),
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: filteredPatients.isEmpty
+                      ? const Center(
+                          child: Text(
+                            'ไม่พบบัญชีผู้เข้ารับการรักษาที่ค้นหา',
+                            style: TextStyle(color: Color(0xff5b8a8f)),
+                          ),
+                        )
+                      : ListView.separated(
+                          itemCount: filteredPatients.length,
+                          separatorBuilder: (_, _) => const SizedBox(height: 10),
+                          itemBuilder: (context, index) {
+                            final patient = filteredPatients[index];
+                            return _SelectionTile(
+                              title: patient.name,
+                              subtitle: '${patient.email.isEmpty ? 'ยังไม่มีอีเมล' : patient.email}\n${patient.phone.isEmpty ? 'ยังไม่มีเบอร์โทร' : patient.phone}',
+                              selected: false,
+                              onTap: () async {
+                                await Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => PatientAccountPage(patient: patient),
+                                  ),
+                                );
+                                if (mounted) setState(() {});
+                              },
                             );
                           },
-                        );
-                      },
-                    ),
+                        ),
+                );
+              },
             ),
           ),
           const SizedBox(height: 12),
@@ -529,7 +570,7 @@ class _AdminHomePageState extends State<AdminHomePage> {
                 border: Border.all(color: const Color(0xffd8eef0)),
               ),
               child: const Text(
-                'เลือกผู้ป่วยเพื่อดูประวัติการรักษาแบบแยกหน้าจอ พร้อมค้นหาด้วยชื่อผู้ป่วยหรือชื่อหมอที่รักษา',
+                'เลือกบัญชีเพื่อแก้ไขอีเมล เบอร์โทรศัพท์ หรือส่งลิงก์ตั้งรหัสผ่านใหม่',
                 style: TextStyle(fontSize: 14, color: Color(0xff114d58)),
                 textAlign: TextAlign.center,
               ),
@@ -839,21 +880,35 @@ class _AdminHomePageState extends State<AdminHomePage> {
     required TextEditingController controller,
     required String label,
     String? hintText,
+    TextInputType? keyboardType,
   }) {
     return TextFormField(
       controller: controller,
+      keyboardType: keyboardType,
       decoration: InputDecoration(
         labelText: label,
         hintText: hintText,
         filled: true,
-        fillColor: const Color(0xfff6fdfe),
+        fillColor: const Color(0xfff4fbfb),
         contentPadding: const EdgeInsets.symmetric(
           vertical: 14,
           horizontal: 16,
         ),
-        border: OutlineInputBorder(
+        enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide.none,
+          borderSide: const BorderSide(color: Color(0xffdfeef0)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Color(0xff13a2ac), width: 1.5),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Color(0xffe15b5b)),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Color(0xffe15b5b), width: 1.5),
         ),
       ),
       validator: (value) {
@@ -1193,15 +1248,112 @@ class _HistoryItem extends StatelessWidget {
   }
 }
 
-class DoctorDetailPage extends StatelessWidget {
-  const DoctorDetailPage({
-    super.key,
-    required this.doctor,
-    required this.onDelete,
-  });
+class DoctorDetailPage extends StatefulWidget {
+  const DoctorDetailPage({super.key, required this.doctor});
 
   final DoctorAccount doctor;
-  final VoidCallback onDelete;
+
+  @override
+  State<DoctorDetailPage> createState() => _DoctorDetailPageState();
+}
+
+class _DoctorDetailPageState extends State<DoctorDetailPage> {
+  late DoctorAccount _doctor;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _doctor = widget.doctor;
+  }
+
+  Future<void> _editDoctor() async {
+    final name = TextEditingController(text: _doctor.name);
+    final email = TextEditingController(text: _doctor.email);
+    final phone = TextEditingController(text: _doctor.phoneNumber);
+    final loginId = TextEditingController(text: _doctor.loginId);
+    final updated = await showDialog<DoctorAccount>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('แก้ไขข้อมูลหมอ'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: name, decoration: const InputDecoration(labelText: 'ชื่อหมอ')),
+              TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'อีเมล')),
+              TextField(controller: phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'เบอร์โทรศัพท์')),
+              TextField(controller: loginId, decoration: const InputDecoration(labelText: 'รหัสหมอ')),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('ยกเลิก')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(
+              context,
+              DoctorAccount(
+                name: name.text.trim(),
+                email: email.text.trim(),
+                phoneNumber: phone.text.trim(),
+                loginId: loginId.text.trim(),
+              ),
+            ),
+            child: const Text('บันทึก'),
+          ),
+        ],
+      ),
+    );
+    name.dispose();
+    email.dispose();
+    phone.dispose();
+    loginId.dispose();
+    if (updated == null || updated.name.isEmpty || updated.loginId.isEmpty) return;
+
+    setState(() => _saving = true);
+    try {
+      await DoctorRepository.updateDoctorAccount(
+        previousLoginId: _doctor.loginId,
+        doctor: updated,
+      );
+      if (mounted) {
+        setState(() => _doctor = updated);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('บันทึกข้อมูลหมอแล้ว')));
+      }
+    } on FirebaseException {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('บันทึกข้อมูลหมอไม่สำเร็จ')));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _deleteDoctor() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('ลบข้อมูลหมอ?'),
+        content: Text('ข้อมูลหมอ ตารางเวลา นัดหมาย และประวัติการรักษาของ ${_doctor.name} จะถูกลบออกจากฐานข้อมูล ไม่สามารถกู้คืนได้'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('ยกเลิก')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xffd84d4d), foregroundColor: Colors.white),
+            child: const Text('ลบข้อมูลหมอ'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _saving = true);
+    try {
+      await DoctorRepository.deleteDoctorAccount(_doctor.loginId);
+      if (mounted) Navigator.of(context).pop();
+    } on FirebaseException {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ลบข้อมูลหมอไม่สำเร็จ')));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1252,13 +1404,13 @@ class DoctorDetailPage extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 18),
-                  _DetailField(label: 'ชื่อ-สกุล', value: doctor.name),
+                  _DetailField(label: 'ชื่อ-สกุล', value: _doctor.name),
                   const SizedBox(height: 10),
-                  _DetailField(label: 'รหัสล็อกอิน', value: doctor.loginId),
+                  _DetailField(label: 'รหัสล็อกอิน', value: _doctor.loginId),
                   const SizedBox(height: 10),
-                  _DetailField(label: 'เมล', value: doctor.email),
+                  _DetailField(label: 'เมล', value: _doctor.email),
                   const SizedBox(height: 10),
-                  _DetailField(label: 'เบอร์โทร', value: '081-234-5678'),
+                  _DetailField(label: 'เบอร์โทร', value: _doctor.phoneNumber.isEmpty ? '-' : _doctor.phoneNumber),
                 ],
               ),
             ),
@@ -1267,7 +1419,7 @@ class DoctorDetailPage extends StatelessWidget {
               children: [
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: () => Navigator.of(context).pop(),
+                    onPressed: _saving ? null : _editDoctor,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xff9be3e1),
                       foregroundColor: const Color(0xff114d58),
@@ -1276,13 +1428,13 @@ class DoctorDetailPage extends StatelessWidget {
                       ),
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
-                    child: const Text('กลับ'),
+                    child: const Text('แก้ไข'),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: onDelete,
+                    onPressed: _saving ? null : _deleteDoctor,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xffff5b5b),
                       shape: RoundedRectangleBorder(
@@ -1290,7 +1442,7 @@ class DoctorDetailPage extends StatelessWidget {
                       ),
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
-                    child: const Text('ลบ'),
+                    child: const Text('ลบข้อมูลหมอ'),
                   ),
                 ),
               ],
@@ -1323,6 +1475,221 @@ class _DetailField extends StatelessWidget {
       ),
     );
   }
+}
+
+class PatientAccountPage extends StatefulWidget {
+  const PatientAccountPage({super.key, required this.patient});
+
+  final PatientRecord patient;
+
+  @override
+  State<PatientAccountPage> createState() => _PatientAccountPageState();
+}
+
+class _PatientAccountPageState extends State<PatientAccountPage> {
+  late final TextEditingController _emailController;
+  late final TextEditingController _phoneController;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _emailController = TextEditingController(text: widget.patient.email);
+    _phoneController = TextEditingController(text: widget.patient.phone);
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _phoneController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final email = _emailController.text.trim();
+    if (email.isEmpty || !email.contains('@')) {
+      _showMessage('กรุณาระบุอีเมลให้ถูกต้อง');
+      return;
+    }
+
+    setState(() => _saving = true);
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(widget.patient.id).set({
+        'name': widget.patient.name,
+        'email': email,
+        'phone': _phoneController.text.trim(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      if (mounted) _showMessage('บันทึกข้อมูลบัญชีแล้ว');
+    } on FirebaseException {
+      if (mounted) _showMessage('บันทึกข้อมูลไม่สำเร็จ กรุณาลองใหม่');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _sendPasswordReset() async {
+    final email = _emailController.text.trim();
+    if (email.isEmpty || !email.contains('@')) {
+      _showMessage('กรุณาระบุอีเมลก่อนเปลี่ยนรหัสผ่าน');
+      return;
+    }
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      if (mounted) _showMessage('ส่งลิงก์ตั้งรหัสผ่านใหม่ไปที่ $email แล้ว');
+    } on FirebaseAuthException {
+      if (mounted) _showMessage('ส่งลิงก์ตั้งรหัสผ่านใหม่ไม่สำเร็จ');
+    }
+  }
+
+  Future<void> _deleteAccount() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('ลบบัญชีผู้เข้ารับการรักษา?'),
+        content: Text(
+          'ข้อมูลบัญชี การนัดหมาย และประวัติการรักษาของ ${widget.patient.name} จะถูกลบออกจากฐานข้อมูล ไม่สามารถกู้คืนได้',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('ยกเลิก'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xffd84d4d),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('ลบบัญชี'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _saving = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await DoctorRepository.deletePatientAccount(
+        patientId: widget.patient.id,
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      messenger.showSnackBar(
+        const SnackBar(content: Text('ลบบัญชีผู้เข้ารับการรักษาแล้ว')),
+      );
+    } on FirebaseException {
+      if (mounted) _showMessage('ลบบัญชีไม่สำเร็จ กรุณาลองใหม่');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  InputDecoration _decoration(String label, IconData icon) => InputDecoration(
+    labelText: label,
+    prefixIcon: Icon(icon, color: const Color(0xff155f68)),
+    filled: true,
+    fillColor: Colors.white,
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(16),
+      borderSide: BorderSide.none,
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: const Color(0xffeffaf9),
+    appBar: AppBar(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      title: const Text('จัดการบัญชีผู้เข้ารับการรักษา'),
+    ),
+    body: SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: const Color(0xffa9e6e3),
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Row(
+              children: [
+                const CircleAvatar(
+                  radius: 25,
+                  backgroundColor: Colors.white,
+                  child: Icon(Icons.person_rounded, color: Color(0xff155f68)),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Text(
+                    widget.patient.name,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xff114d58),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          TextField(
+            controller: _emailController,
+            keyboardType: TextInputType.emailAddress,
+            decoration: _decoration('อีเมล', Icons.email_outlined),
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: _phoneController,
+            keyboardType: TextInputType.phone,
+            decoration: _decoration('เบอร์โทรศัพท์', Icons.phone_outlined),
+          ),
+          const SizedBox(height: 20),
+          ElevatedButton.icon(
+            onPressed: _saving ? null : _save,
+            icon: _saving
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.save_outlined),
+            label: const Text('บันทึกการเปลี่ยนแปลง'),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: _sendPasswordReset,
+            icon: const Icon(Icons.lock_reset_outlined),
+            label: const Text('เปลี่ยนรหัสผ่าน'),
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'ระบบจะส่งลิงก์ตั้งรหัสผ่านใหม่ไปยังอีเมลของผู้เข้ารับการรักษา',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 13, color: Color(0xff5b8a8f)),
+          ),
+          const SizedBox(height: 36),
+          OutlinedButton.icon(
+            onPressed: _saving ? null : _deleteAccount,
+            icon: const Icon(Icons.delete_outline_rounded),
+            label: const Text('ลบบัญชีผู้เข้ารับการรักษา'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xffc93f3f),
+              side: const BorderSide(color: Color(0xffe19a9a)),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class PatientHistoryPage extends StatefulWidget {

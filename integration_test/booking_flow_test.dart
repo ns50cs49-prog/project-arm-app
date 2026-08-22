@@ -40,7 +40,6 @@ void main() {
 
       final queueNumber = await DoctorRepository.bookAvailabilitySlot(
         availabilityId: slot.id!,
-        selectedTimeHHmm: slot.startHHmm,
         appointmentData: {
           'userId': 'test-uid',
           'displayName': 'Test Patient',

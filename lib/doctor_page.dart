@@ -142,10 +142,7 @@ class _DoctorPageState extends State<DoctorPage> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text(
-              'ลบ',
-              style: TextStyle(color: Color(0xffe64051)),
-            ),
+            child: const Text('ลบ', style: TextStyle(color: Color(0xffe64051))),
           ),
         ],
       ),
@@ -179,9 +176,9 @@ class _DoctorPageState extends State<DoctorPage> {
       ).timeout(const Duration(seconds: 10));
       if (!mounted) return;
       final timeLabel = (time == null || time.isEmpty) ? '' : ' เวลา $time';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('เรียกคิวคุณ$name$timeLabel')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('เรียกคิวคุณ$name$timeLabel')));
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -238,7 +235,9 @@ class _DoctorPageState extends State<DoctorPage> {
               const SizedBox(height: 10),
               TextField(
                 controller: noteController,
-                decoration: const InputDecoration(labelText: 'หมายเหตุ (ถ้ามี)'),
+                decoration: const InputDecoration(
+                  labelText: 'หมายเหตุ (ถ้ามี)',
+                ),
                 maxLines: 2,
               ),
             ],
@@ -571,7 +570,10 @@ class _DoctorPageState extends State<DoctorPage> {
                     ],
                     const Text(
                       'คิวที่กำลังรอ',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     const SizedBox(height: 12),
                     StreamBuilder<List<Map<String, dynamic>>>(

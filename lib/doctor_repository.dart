@@ -204,7 +204,8 @@ class DoctorRepository {
   }
 
   /// yyyy-MM-dd for the current day, used to scope slots/queues to "today".
-  static String _todayKey() => DateTime.now().toIso8601String().substring(0, 10);
+  static String _todayKey() =>
+      DateTime.now().toIso8601String().substring(0, 10);
 
   static DoctorAvailabilityModel _availabilityFromDoc(
     QueryDocumentSnapshot<Map<String, dynamic>> doc,
@@ -250,12 +251,11 @@ class DoctorRepository {
   }
 
   /// Atomically checks capacity and books a slot. Returns the assigned
-  /// zero-padded queue number, or null if the slot is already full.
-  /// `selectedTimeHHmm` is the specific appointment time the patient
-  /// picked (e.g. '10:00') within the doctor's range.
+  /// zero-padded queue number, or null if the slot is already full. Books
+  /// into the doctor's whole-day range — the patient no longer picks a
+  /// specific time.
   static Future<String?> bookAvailabilitySlot({
     required String availabilityId,
-    required String selectedTimeHHmm,
     required Map<String, dynamic> appointmentData,
   }) {
     final availabilityRef = _availabilityCollection.doc(availabilityId);
@@ -273,18 +273,17 @@ class DoctorRepository {
         if (bookedCount >= maxQueue) return null;
 
         final queueNumber = (bookedCount + 1).toString().padLeft(3, '0');
+        final startHHmm = data['startHHmm'] as String? ?? '';
+        final endHHmm = data['endHHmm'] as String? ?? '';
         transaction.update(availabilityRef, {'bookedCount': bookedCount + 1});
-        final newAppointment = {
+        transaction.set(appointmentRef, {
           ...appointmentData,
           'availabilityId': availabilityId,
           'queueNumber': queueNumber,
-          'time': '$selectedTimeHHmm น.',
+          'time': '$startHHmm - $endHHmm น.',
           'called': false,
           'completed': false,
-        };
-        // ignore: avoid_print
-        print('DEBUG bookAvailabilitySlot writing: $newAppointment');
-        transaction.set(appointmentRef, newAppointment);
+        });
         return queueNumber;
       });
     });
@@ -299,31 +298,29 @@ class DoctorRepository {
         .where('called', isEqualTo: false)
         .snapshots()
         .map(
-          (snapshot) => snapshot.docs
-              .map((doc) => {'id': doc.id, ...doc.data()})
-              .where((a) => (a['date'] as String? ?? '').startsWith(today))
-              .toList()
-            ..sort(
-              (a, b) => (a['queueNumber'] as String? ?? '').compareTo(
-                b['queueNumber'] as String? ?? '',
-              ),
-            ),
+          (snapshot) =>
+              snapshot.docs
+                  .map((doc) => {'id': doc.id, ...doc.data()})
+                  .where((a) => (a['date'] as String? ?? '').startsWith(today))
+                  .toList()
+                ..sort(
+                  (a, b) => (a['queueNumber'] as String? ?? '').compareTo(
+                    b['queueNumber'] as String? ?? '',
+                  ),
+                ),
         );
   }
 
   static Future<void> markAppointmentCalled(String appointmentId) {
     return _withRetry(
-      () => _appointmentsCollection.doc(appointmentId).update({
-        'called': true,
-      }),
+      () => _appointmentsCollection.doc(appointmentId).update({'called': true}),
     );
   }
 
   /// Appointments that have been called and are currently being treated
   /// (not yet marked complete by the doctor).
-  static Stream<List<Map<String, dynamic>>> watchInProgressAppointmentsForDoctor(
-    String doctorLoginId,
-  ) {
+  static Stream<List<Map<String, dynamic>>>
+  watchInProgressAppointmentsForDoctor(String doctorLoginId) {
     final today = _todayKey();
     return _appointmentsCollection
         .where('doctorLoginId', isEqualTo: doctorLoginId)
@@ -401,8 +398,9 @@ class DoctorRepository {
         .where('doctorLoginId', isEqualTo: doctorLoginId)
         .snapshots()
         .map(
-          (snapshot) => snapshot.docs.map(_treatmentFromDoc).toList()
-            ..sort((a, b) => b.dateIso.compareTo(a.dateIso)),
+          (snapshot) =>
+              snapshot.docs.map(_treatmentFromDoc).toList()
+                ..sort((a, b) => b.dateIso.compareTo(a.dateIso)),
         );
   }
 
@@ -418,15 +416,16 @@ class DoctorRepository {
         .where('completed', isEqualTo: false)
         .snapshots()
         .map(
-          (snapshot) => snapshot.docs
-              .map((doc) => {'id': doc.id, ...doc.data()})
-              .where((a) => (a['date'] as String? ?? '').startsWith(today))
-              .toList()
-            ..sort(
-              (a, b) => (a['queueNumber'] as String? ?? '').compareTo(
-                b['queueNumber'] as String? ?? '',
-              ),
-            ),
+          (snapshot) =>
+              snapshot.docs
+                  .map((doc) => {'id': doc.id, ...doc.data()})
+                  .where((a) => (a['date'] as String? ?? '').startsWith(today))
+                  .toList()
+                ..sort(
+                  (a, b) => (a['queueNumber'] as String? ?? '').compareTo(
+                    b['queueNumber'] as String? ?? '',
+                  ),
+                ),
         );
   }
 
@@ -446,8 +445,7 @@ class DoctorRepository {
         transaction.delete(appointmentRef);
         if (availabilitySnapshot.exists) {
           final bookedCount =
-              (availabilitySnapshot.data()?['bookedCount'] as num?)
-                  ?.toInt() ??
+              (availabilitySnapshot.data()?['bookedCount'] as num?)?.toInt() ??
               0;
           if (bookedCount > 0) {
             transaction.update(availabilityRef, {

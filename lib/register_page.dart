@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
@@ -10,6 +11,8 @@ class RegisterPage extends StatefulWidget {
 
 class _RegisterPageState extends State<RegisterPage> {
   final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _phoneController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
@@ -18,6 +21,8 @@ class _RegisterPageState extends State<RegisterPage> {
 
   @override
   void dispose() {
+    _nameController.dispose();
+    _phoneController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
@@ -29,10 +34,30 @@ class _RegisterPageState extends State<RegisterPage> {
 
     setState(() => _isLoading = true);
     try {
-      await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
-      );
+      final name = _nameController.text.trim();
+      final phone = _phoneController.text.trim();
+      final credential = await FirebaseAuth.instance
+          .createUserWithEmailAndPassword(
+            email: _emailController.text.trim(),
+            password: _passwordController.text,
+          );
+      final user = credential.user;
+      if (user != null) {
+        await user.updateDisplayName(name);
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'name': name,
+          'phone': phone,
+          'email': user.email,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+      // Registering also signs the user in — sign back out so they land on
+      // the login page and log in explicitly rather than being dropped
+      // straight into the app.
+      await FirebaseAuth.instance.signOut();
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+      return;
     } on FirebaseAuthException catch (error) {
       if (!mounted) return;
       final message = switch (error.code) {
@@ -88,6 +113,37 @@ class _RegisterPageState extends State<RegisterPage> {
                         ),
                       ),
                       const SizedBox(height: 20),
+                      TextFormField(
+                        controller: _nameController,
+                        decoration: const InputDecoration(
+                          labelText: 'ชื่อ-นามสกุล',
+                          prefixIcon: Icon(Icons.person_outline_rounded),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'กรุณากรอกชื่อ-นามสกุล';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _phoneController,
+                        keyboardType: TextInputType.phone,
+                        decoration: const InputDecoration(
+                          labelText: 'เบอร์โทรศัพท์',
+                          prefixIcon: Icon(Icons.phone_outlined),
+                        ),
+                        validator: (value) {
+                          final phone = value?.trim() ?? '';
+                          if (phone.isEmpty) return 'กรุณากรอกเบอร์โทรศัพท์';
+                          if (!RegExp(r'^[0-9]{9,10}$').hasMatch(phone)) {
+                            return 'กรุณากรอกเบอร์โทรศัพท์ให้ถูกต้อง';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
                       TextFormField(
                         controller: _emailController,
                         keyboardType: TextInputType.emailAddress,

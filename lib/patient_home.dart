@@ -2,7 +2,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
-import 'appointment.dart';
 import 'history.dart';
 import 'login.dart';
 import 'doctor_repository.dart';
@@ -233,11 +232,17 @@ class _PatientHomePageState extends State<PatientHomePage> {
                       return _DoctorListTile(
                         doctor: d,
                         slot: slotByDoctor[d.loginId],
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => DoctorTimeSlotPage(doctor: d),
-                          ),
-                        ),
+                        onTap: () async {
+                          final booked = await Navigator.of(context)
+                              .push<bool>(
+                                MaterialPageRoute(
+                                  builder: (_) => DoctorTimeSlotPage(
+                                    doctor: d,
+                                  ),
+                                ),
+                              );
+                          if (booked == true) _setTab(0);
+                        },
                       );
                     }).toList(),
                   );
@@ -730,34 +735,6 @@ class _DoctorListTile extends StatelessWidget {
 
 /// Generates discrete 'HH:mm' appointment times between [startHHmm]
 /// (inclusive) and [endHHmm] (exclusive), spaced [intervalMinutes] apart.
-List<String> _generateTimeSlots(
-  String startHHmm,
-  String endHHmm,
-  int intervalMinutes,
-) {
-  int toMinutes(String hhmm) {
-    final parts = hhmm.split(':');
-    return (int.tryParse(parts[0]) ?? 0) * 60 + (int.tryParse(parts[1]) ?? 0);
-  }
-
-  String fromMinutes(int minutes) {
-    final h = (minutes ~/ 60) % 24;
-    final m = minutes % 60;
-    return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
-  }
-
-  if (intervalMinutes <= 0) return const [];
-  final start = toMinutes(startHHmm);
-  final end = toMinutes(endHHmm);
-  final times = <String>[];
-  for (var t = start; t < end; t += intervalMinutes) {
-    times.add(fromMinutes(t));
-  }
-  return times;
-}
-
-const _timeSlotIntervalMinutes = 30;
-
 class DoctorTimeSlotPage extends StatefulWidget {
   const DoctorTimeSlotPage({super.key, required this.doctor});
 
@@ -770,7 +747,7 @@ class DoctorTimeSlotPage extends StatefulWidget {
 class _DoctorTimeSlotPageState extends State<DoctorTimeSlotPage> {
   bool _booking = false;
 
-  Future<void> _bookTime(DoctorAvailabilityModel slot, String timeHHmm) async {
+  Future<void> _bookSlot(DoctorAvailabilityModel slot) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       showDialog(
@@ -807,7 +784,6 @@ class _DoctorTimeSlotPageState extends State<DoctorTimeSlotPage> {
     try {
       final queueNumber = await DoctorRepository.bookAvailabilitySlot(
         availabilityId: slot.id!,
-        selectedTimeHHmm: timeHHmm,
         appointmentData: doc,
       ).timeout(const Duration(seconds: 10));
 
@@ -832,14 +808,7 @@ class _DoctorTimeSlotPageState extends State<DoctorTimeSlotPage> {
         return;
       }
 
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => AppointmentPage.fromMap(
-            id: slot.id!,
-            data: {...doc, 'queue': queueNumber, 'time': '$timeHHmm น.'},
-          ),
-        ),
-      );
+      Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) return;
       setState(() => _booking = false);
@@ -919,11 +888,6 @@ class _DoctorTimeSlotPageState extends State<DoctorTimeSlotPage> {
                       final dateStr = date != null
                           ? '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}'
                           : slot.dateIso;
-                      final times = _generateTimeSlots(
-                        slot.startHHmm,
-                        slot.endHHmm,
-                        _timeSlotIntervalMinutes,
-                      );
 
                       return Container(
                         width: double.infinity,
@@ -974,7 +938,7 @@ class _DoctorTimeSlotPageState extends State<DoctorTimeSlotPage> {
                             Text(
                               full
                                   ? 'คิวเต็มแล้วสำหรับวันนี้ (${slot.bookedCount}/${slot.maxQueue} คิว)'
-                                  : 'ว่าง ${slot.maxQueue - slot.bookedCount}/${slot.maxQueue} คิว — เลือกเวลาที่ต้องการ',
+                                  : 'ว่าง ${slot.maxQueue - slot.bookedCount}/${slot.maxQueue} คิว',
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
@@ -984,44 +948,34 @@ class _DoctorTimeSlotPageState extends State<DoctorTimeSlotPage> {
                               ),
                             ),
                             const SizedBox(height: 12),
-                            Wrap(
-                              spacing: 10,
-                              runSpacing: 10,
-                              children: times.map((time) {
-                                return InkWell(
-                                  onTap: (full || _booking)
-                                      ? null
-                                      : () => _bookTime(slot, time),
-                                  borderRadius: BorderRadius.circular(10),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 10,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: full
-                                          ? const Color(0xfff2f5f6)
-                                          : const Color(0xfff3feff),
-                                      borderRadius: BorderRadius.circular(10),
-                                      border: Border.all(
-                                        color: full
-                                            ? const Color(0xffd8eef0)
-                                            : const Color(0xffd9f0f2),
-                                      ),
-                                    ),
-                                    child: Text(
-                                      time,
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                        color: full
-                                            ? const Color(0xffa9bcbf)
-                                            : const Color(0xff114d58),
-                                      ),
-                                    ),
+                            SizedBox(
+                              width: double.infinity,
+                              height: 46,
+                              child: ElevatedButton(
+                                onPressed: (full || _booking)
+                                    ? null
+                                    : () => _bookSlot(slot),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xff12aeb6),
+                                  disabledBackgroundColor: const Color(
+                                    0xfff2f5f6,
                                   ),
-                                );
-                              }).toList(),
+                                  foregroundColor: Colors.white,
+                                  disabledForegroundColor: const Color(
+                                    0xffa9bcbf,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                                child: Text(
+                                  full ? 'คิวเต็มแล้ว' : 'ยืนยันจองคิว',
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
                             ),
                           ],
                         ),
@@ -1192,8 +1146,6 @@ class _QueueStatusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Rough estimate only — actual per-patient treatment time isn't tracked.
-    final estimatedMinutes = aheadCount * 5;
     final String statusText;
     final int step;
     if (inProgress) {
@@ -1284,12 +1236,6 @@ class _QueueStatusCard extends StatelessWidget {
                     icon: Icons.people_alt_outlined,
                     label: 'เหลืออีก',
                     value: '$aheadCount คิว',
-                  ),
-                  const SizedBox(height: 10),
-                  _QueueStatusRow(
-                    icon: Icons.access_time_rounded,
-                    label: 'เวลารอโดยประมาณ',
-                    value: '$estimatedMinutes นาที',
                   ),
                   const SizedBox(height: 10),
                   _QueueStatusRow(

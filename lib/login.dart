@@ -202,11 +202,23 @@ class _LoginPageState extends State<LoginPage> {
                             style: TextStyle(fontSize: 10),
                           ),
                           TextButton(
-                            onPressed: () => Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => const RegisterPage(),
-                              ),
-                            ),
+                            onPressed: () async {
+                              final registered = await Navigator.of(context)
+                                  .push<bool>(
+                                    MaterialPageRoute(
+                                      builder: (_) => const RegisterPage(),
+                                    ),
+                                  );
+                              if (registered == true && context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'สมัครสมาชิกสำเร็จ กรุณาเข้าสู่ระบบ',
+                                    ),
+                                  ),
+                                );
+                              }
+                            },
                             child: const Text('สมัครสมาชิก'),
                           ),
                         ],

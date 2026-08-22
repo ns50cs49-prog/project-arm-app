@@ -46,6 +46,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '88186335632',
     projectId: 'project-arm-app',
     authDomain: 'project-arm-app.firebaseapp.com',
+    databaseURL: 'https://project-arm-app-default-rtdb.asia-southeast1.firebasedatabase.app',
     storageBucket: 'project-arm-app.firebasestorage.app',
     measurementId: 'G-4Z90LR8Z93',
   );
@@ -55,6 +56,7 @@ class DefaultFirebaseOptions {
     appId: '1:88186335632:android:068ae4931868c78fbb0315',
     messagingSenderId: '88186335632',
     projectId: 'project-arm-app',
+    databaseURL: 'https://project-arm-app-default-rtdb.asia-southeast1.firebasedatabase.app',
     storageBucket: 'project-arm-app.firebasestorage.app',
   );
 
@@ -63,6 +65,7 @@ class DefaultFirebaseOptions {
     appId: '1:88186335632:ios:893c78345cc96581bb0315',
     messagingSenderId: '88186335632',
     projectId: 'project-arm-app',
+    databaseURL: 'https://project-arm-app-default-rtdb.asia-southeast1.firebasedatabase.app',
     storageBucket: 'project-arm-app.firebasestorage.app',
     iosBundleId: 'com.example.flutterApplication1',
   );
@@ -72,6 +75,7 @@ class DefaultFirebaseOptions {
     appId: '1:88186335632:ios:893c78345cc96581bb0315',
     messagingSenderId: '88186335632',
     projectId: 'project-arm-app',
+    databaseURL: 'https://project-arm-app-default-rtdb.asia-southeast1.firebasedatabase.app',
     storageBucket: 'project-arm-app.firebasestorage.app',
     iosBundleId: 'com.example.flutterApplication1',
   );
@@ -82,6 +86,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '88186335632',
     projectId: 'project-arm-app',
     authDomain: 'project-arm-app.firebaseapp.com',
+    databaseURL: 'https://project-arm-app-default-rtdb.asia-southeast1.firebasedatabase.app',
     storageBucket: 'project-arm-app.firebasestorage.app',
     measurementId: 'G-1CMMMN1S5G',
   );

@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
 
 import 'appointment.dart';
@@ -124,27 +125,176 @@ class _AdminHomePageState extends State<AdminHomePage> {
   Widget _buildSelectionScreen() {
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
-              'จัดการรายชื่อ',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w700,
-                color: Color(0xff114d58),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+              decoration: BoxDecoration(
+                color: const Color(0xfff8ffff),
+                borderRadius: BorderRadius.circular(28),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x0f1f5a5a),
+                    blurRadius: 12,
+                    offset: Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: const [
+                        Text(
+                          'แอดมิน',
+                          style: TextStyle(
+                            fontSize: 26,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xff114d58),
+                          ),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'ระบบจัดการเครื่องกายภาพ',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Color(0xff5f8d93),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    width: 62,
+                    height: 62,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: const LinearGradient(
+                        colors: [Color(0xff7ed7d7), Color(0xff19a7b4)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x1f0c8a8d),
+                          blurRadius: 10,
+                          offset: Offset(0, 5),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.person_rounded,
+                      size: 34,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 18),
-            _AdminActionCard(
-              label: 'จัดการรายชื่อหมอ',
-              onTap: () => _switchAdminMode(AdminMode.doctor),
-            ),
-            const SizedBox(height: 16),
-            _AdminActionCard(
-              label: 'จัดการรายชื่อผู้ป่วย',
-              onTap: () => _switchAdminMode(AdminMode.patient),
+            const SizedBox(height: 22),
+            Expanded(
+              child: Column(
+                children: [
+                  _DashboardCard(
+                    label: 'สถานะเครื่อง',
+                    icon: Icons.monitor_heart_outlined,
+                    backgroundColor: const Color(0xff9fe2e0),
+                    onTap: () {},
+                    trailing: StreamBuilder<DatabaseEvent>(
+                      stream: FirebaseDatabase.instance.ref('esp32/led').onValue,
+                      builder: (context, snapshot) {
+                        final data = snapshot.data?.snapshot.value;
+                        final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
+                        final status = (map['status'] ?? '').toString().toUpperCase();
+
+                        final updatedAtValue =
+                            map['updatedAt'] ??
+                            map['timestamp'] ??
+                            map['lastSeen'] ??
+                            map['time'];
+
+                        DateTime? updatedAt;
+                        if (updatedAtValue is int) {
+                          updatedAt = DateTime.fromMillisecondsSinceEpoch(updatedAtValue);
+                        } else if (updatedAtValue is num) {
+                          updatedAt = DateTime.fromMillisecondsSinceEpoch(updatedAtValue.round());
+                        } else if (updatedAtValue is String) {
+                          final parsed = int.tryParse(updatedAtValue);
+                          if (parsed != null) {
+                            updatedAt = DateTime.fromMillisecondsSinceEpoch(parsed);
+                          } else {
+                            updatedAt = DateTime.tryParse(updatedAtValue);
+                          }
+                        }
+
+                        final isWorking =
+                            status == 'ON' ||
+                            status == 'WORKING' ||
+                            status == 'RUNNING';
+                        final isStaleOnline =
+                            status == 'ONLINE' &&
+                            updatedAt != null &&
+                            DateTime.now().difference(updatedAt).inSeconds > 30;
+                        final isOffline =
+                            !snapshot.hasData ||
+                            snapshot.hasError ||
+                            status == 'OFF' ||
+                            status == 'OFFLINE' ||
+                            isStaleOnline;
+                        final isOnline = !isWorking && !isOffline && (status == 'ONLINE' || status == 'CONNECTED');
+                        final label = isWorking ? 'กำลังทำงาน' : isOnline ? 'ออนไลน์' : 'ออฟไลน์';
+                        final color = isWorking
+                            ? const Color(0xff0d9984)
+                            : isOnline
+                            ? const Color(0xfff39a1d)
+                            : const Color(0xff7a8d92);
+
+                        return Row(
+                          children: [
+                            Container(
+                              width: 12,
+                              height: 12,
+                              decoration: BoxDecoration(
+                                color: color,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              label,
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: color,
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  _DashboardCard(
+                    label: 'จัดการรายชื่อหมอ',
+                    subtitle: 'เพิ่ม / แก้ไข / ลบรายชื่อหมอ',
+                    icon: Icons.medical_information_outlined,
+                    backgroundColor: const Color(0xffa8e3de),
+                    onTap: () => _switchAdminMode(AdminMode.doctor),
+                  ),
+                  const SizedBox(height: 18),
+                  _DashboardCard(
+                    label: 'จัดการรายชื่อผู้ป่วย',
+                    subtitle: 'เพิ่ม / แก้ไข / ลบรายชื่อผู้ป่วย',
+                    icon: Icons.people_alt_outlined,
+                    backgroundColor: const Color(0xffa8e3de),
+                    onTap: () => _switchAdminMode(AdminMode.patient),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -751,7 +901,7 @@ class _AdminHomePageState extends State<AdminHomePage> {
           : null,
       body: _buildBody(),
       bottomNavigationBar: Container(
-        height: 74,
+        height: 76,
         decoration: const BoxDecoration(
           color: Colors.white,
           boxShadow: [
@@ -766,23 +916,15 @@ class _AdminHomePageState extends State<AdminHomePage> {
           children: [
             Expanded(
               child: _NavItem(
-                icon: Icons.home_outlined,
-                label: 'หน้าหลัก',
+                icon: Icons.home_rounded,
+                label: 'หน้าแรก',
                 active: _selectedTab == 0,
                 onTap: () => _navigateTo(0),
               ),
             ),
             Expanded(
               child: _NavItem(
-                icon: Icons.calendar_month_outlined,
-                label: 'จัดการคิว',
-                active: _selectedTab == 1,
-                onTap: () => _navigateTo(1),
-              ),
-            ),
-            Expanded(
-              child: _NavItem(
-                icon: Icons.assignment_rounded,
+                icon: Icons.receipt_long_rounded,
                 label: 'ประวัติ',
                 active: _selectedTab == 2,
                 onTap: () => _navigateTo(2),
@@ -797,6 +939,82 @@ class _AdminHomePageState extends State<AdminHomePage> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DashboardCard extends StatelessWidget {
+  const _DashboardCard({
+    required this.label,
+    required this.icon,
+    required this.backgroundColor,
+    required this.onTap,
+    this.subtitle,
+    this.trailing,
+  });
+
+  final String label;
+  final String? subtitle;
+  final IconData icon;
+  final Color backgroundColor;
+  final VoidCallback onTap;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(24),
+        onTap: onTap,
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+          decoration: BoxDecoration(
+            color: backgroundColor,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: const Color(0xfff4ffff),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: const Color(0xff114d58), size: 28),
+              ),
+              const SizedBox(width: 18),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xff114d58),
+                      ),
+                    ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        subtitle!,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xff5f8d93),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              ?trailing,
+            ],
+          ),
         ),
       ),
     );

@@ -3,15 +3,26 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
+
 import 'admin_home.dart';
 import 'firebase_options.dart';
 import 'login.dart';
 import 'patient_home.dart';
 
+Future<FirebaseApp> initializeFirebase() async {
+  if (Firebase.apps.isNotEmpty) {
+    return Firebase.app();
+  }
+
+  return Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await initializeFirebase();
 
   // Dev-only: point Firestore at the local emulator so testing doesn't need
   // a billing-enabled cloud project. Remove this block once the real
@@ -64,7 +75,6 @@ class AuthGate extends StatelessWidget {
           return const LoginPage();
         }
 
-        // Temporary role routing until Firestore is configured.
         final email = user.email?.trim().toLowerCase();
         if (email == 'raddawan3079@gmail.com') {
           return AdminHomePage(

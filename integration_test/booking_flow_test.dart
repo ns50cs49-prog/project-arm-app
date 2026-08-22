@@ -11,10 +11,21 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   setUpAll(() async {
+<<<<<<< HEAD
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
     FirebaseFirestore.instance.useFirestoreEmulator('10.10.0.169', 8080);
+=======
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    } else {
+      Firebase.app();
+    }
+    FirebaseFirestore.instance.useFirestoreEmulator('10.10.0.135', 8080);
+>>>>>>> 67c2897 (TEST)
   });
 
   testWidgets(

@@ -33,13 +33,15 @@ There is also `integration_test/booking_flow_test.dart` (+ `test_driver/integrat
 
 Previously named `docter.dart`/`docter_home.dart` (near-identical names for unrelated pages) — renamed for clarity:
 - `doctor_page.dart` → `DoctorPage`: the **doctor's own** app (add availability + live queue + "เรียกคิว" call-next, history, profile).
-- `admin_home.dart` → `AdminHomePage`: the **admin** app (manage doctor accounts, manage patients/treatment history). Also defines `PatientTreatmentDetailPage`, reused by `history.dart`.
+- `admin_home.dart` → `AdminHomePage`: the **admin** app (manage doctor accounts, manage patients/treatment history via `PatientHistoryPage` + `PatientTreatmentDetailPage`).
+- `history.dart` → `HistoryPage`: a real-time treatment-history list backed by `DoctorRepository.watchTreatmentsForPatientUserId`/`watchAllTreatments`. Used both as the patient's own "ประวัติ" tab (`patient_home.dart`, scoped to their uid) and as the admin's overview tab (`admin_home.dart`, unscoped — shows every patient's history).
 
 ### `DoctorRepository` (`doctor_repository.dart`) — mixed persistence, by design
 
 This static class is the single data-access layer, but its collections have different backing stores:
-- `doctors` (accounts) and `_treatmentHistory` — **in-memory static lists**, reset on every app restart. Not Firestore.
-- Availability (`doctorAvailability` collection) and bookings (`appointments` collection) — **real Firestore**, since both the doctor app and patient app need to see the same live queue state.
+- `doctors` (accounts) — an **in-memory static list**, reset on every app restart. Not Firestore.
+- Availability (`doctorAvailability` collection), bookings (`appointments` collection), and treatment history (`treatmentHistory` collection) — **real Firestore**, since the doctor, patient, and admin apps all need to see the same live/persisted data.
+  - `addTreatmentRecord` is called from `doctor_page.dart` when the doctor presses "เสร็จสิ้น" — it's written *before* `markAppointmentCompleted`, so a completed appointment can never end up missing its history entry. Records store `patientUserId` (when the booking has one) so a patient's own history (`history.dart`'s `HistoryPage`) can query by uid rather than by display name; the admin patient-management screens (`admin_home.dart`) query by `patientName` instead, since that's all they have to search on.
   - `bookAvailabilitySlot` uses a Firestore transaction to atomically check `bookedCount < maxQueue` and assign a sequential zero-padded queue number — this is the only place overbooking is actually prevented.
   - `watchAvailabilitiesForDoctor` / `watchAppointmentsForDoctor` filter results client-side to **today's date** (`_todayKey()`) so slots/queues from other days don't linger in the UI. Old docs aren't deleted, just filtered out — don't "fix" this by adding a Firestore `where` on date without checking why it was done client-side (avoids composite-index requirements for the existing equality filters).
   - Writes are wrapped in `_withRetry` (retries `unavailable`/`deadline-exceeded` a couple of times) because the Android Firestore SDK's gRPC channel has been observed to drop with "Channel shutdownNow invoked" on some devices/networks.

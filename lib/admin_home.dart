@@ -406,7 +406,17 @@ class _AdminHomePageState extends State<AdminHomePage> {
   }
 
   Widget _buildPatientManagementScreen() {
-    final patients = DoctorRepository.getPatientNames();
+    return StreamBuilder<List<TreatmentHistoryItem>>(
+      stream: DoctorRepository.watchAllTreatments(),
+      builder: (context, snapshot) {
+        final allTreatments = snapshot.data ?? const [];
+        return _buildPatientManagementBody(allTreatments);
+      },
+    );
+  }
+
+  Widget _buildPatientManagementBody(List<TreatmentHistoryItem> allTreatments) {
+    final patients = allTreatments.map((item) => item.patientName).toSet().toList();
     final patientSearch = _doctorSearch.trim().toLowerCase();
     final matchingDoctors = patientSearch.isEmpty
         ? const <DoctorAccount>[]
@@ -418,17 +428,19 @@ class _AdminHomePageState extends State<AdminHomePage> {
     final filteredPatients = patients.where((name) {
       if (patientSearch.isEmpty) return true;
       if (name.toLowerCase().contains(patientSearch)) return true;
-      return DoctorRepository.getTreatmentsForPatient(name).any((treatment) {
-        final doctorName = DoctorRepository.doctors
-            .firstWhere(
-              (doctor) => doctor.loginId == treatment.doctorLoginId,
-              orElse: () =>
-                  const DoctorAccount(name: '', email: '', loginId: ''),
-            )
-            .name
-            .toLowerCase();
-        return doctorName.contains(patientSearch);
-      });
+      return allTreatments
+          .where((treatment) => treatment.patientName == name)
+          .any((treatment) {
+            final doctorName = DoctorRepository.doctors
+                .firstWhere(
+                  (doctor) => doctor.loginId == treatment.doctorLoginId,
+                  orElse: () =>
+                      const DoctorAccount(name: '', email: '', loginId: ''),
+                )
+                .name
+                .toLowerCase();
+            return doctorName.contains(patientSearch);
+          });
     }).toList();
 
     return SafeArea(
@@ -474,7 +486,7 @@ class _AdminHomePageState extends State<AdminHomePage> {
               child: Column(
                 children: [
                   for (final doctor in matchingDoctors) ...[
-                    _buildDoctorDetailCard(doctor),
+                    _buildDoctorDetailCard(doctor, allTreatments),
                     const SizedBox(height: 12),
                   ],
                 ],
@@ -500,10 +512,12 @@ class _AdminHomePageState extends State<AdminHomePage> {
                       separatorBuilder: (_, _) => const SizedBox(height: 10),
                       itemBuilder: (context, index) {
                         final patient = filteredPatients[index];
+                        final patientTreatmentCount = allTreatments
+                            .where((item) => item.patientName == patient)
+                            .length;
                         return _SelectionTile(
                           title: patient,
-                          subtitle:
-                              'เคยกายภาพกับ ${DoctorRepository.getTreatmentsForPatient(patient).length} หมอ',
+                          subtitle: 'เคยกายภาพกับ $patientTreatmentCount หมอ',
                           selected: false,
                           onTap: () {
                             Navigator.of(context).push(
@@ -541,8 +555,13 @@ class _AdminHomePageState extends State<AdminHomePage> {
     );
   }
 
-  Widget _buildDoctorDetailCard(DoctorAccount doctor) {
-    final treatments = DoctorRepository.getTreatmentsForDoctor(doctor.loginId);
+  Widget _buildDoctorDetailCard(
+    DoctorAccount doctor,
+    List<TreatmentHistoryItem> allTreatments,
+  ) {
+    final treatments = allTreatments
+        .where((item) => item.doctorLoginId == doctor.loginId)
+        .toList();
     final patientNames = treatments
         .map((item) => item.patientName)
         .toSet()
@@ -577,7 +596,7 @@ class _AdminHomePageState extends State<AdminHomePage> {
                 child: _SelectionTile(
                   title: name,
                   subtitle:
-                      'รักษากับหมอคนนี้ ${DoctorRepository.getTreatmentsForPatientAndDoctor(name, doctor.loginId).length} ครั้ง',
+                      'รักษากับหมอคนนี้ ${treatments.where((item) => item.patientName == name).length} ครั้ง',
                   selected: false,
                   onTap: () {
                     Navigator.of(context).push(
@@ -829,7 +848,7 @@ class _AdminHomePageState extends State<AdminHomePage> {
       children: [
         _buildHomeContent(),
         const AppointmentPage(),
-        const HistoryPage(showBottomNav: false),
+        const HistoryPage(),
         _buildProfileContent(),
       ],
     );
@@ -1339,25 +1358,6 @@ class _PatientHistoryPageState extends State<PatientHistoryPage> {
 
   @override
   Widget build(BuildContext context) {
-    final allTreatments = DoctorRepository.getTreatmentsForPatient(
-      widget.patientName,
-    );
-    final filteredTreatments = allTreatments.where((item) {
-      final search = _searchText.trim().toLowerCase();
-      return search.isEmpty ||
-          item.doctorLoginId.toLowerCase().contains(search) ||
-          item.patientName.toLowerCase().contains(search) ||
-          DoctorRepository.doctors
-              .firstWhere(
-                (doctor) => doctor.loginId == item.doctorLoginId,
-                orElse: () =>
-                    const DoctorAccount(name: '', email: '', loginId: ''),
-              )
-              .name
-              .toLowerCase()
-              .contains(search);
-    }).toList();
-
     return Scaffold(
       backgroundColor: const Color(0xffeffaf9),
       appBar: AppBar(
@@ -1421,47 +1421,75 @@ class _PatientHistoryPageState extends State<PatientHistoryPage> {
             ),
             const SizedBox(height: 14),
             Expanded(
-              child: filteredTreatments.isEmpty
-                  ? Center(
+              child: StreamBuilder<List<TreatmentHistoryItem>>(
+                stream: DoctorRepository.watchTreatmentsForPatientName(
+                  widget.patientName,
+                ),
+                builder: (context, snapshot) {
+                  final allTreatments = snapshot.data ?? const [];
+                  final search = _searchText.trim().toLowerCase();
+                  final filteredTreatments = allTreatments.where((item) {
+                    return search.isEmpty ||
+                        item.doctorLoginId.toLowerCase().contains(search) ||
+                        item.patientName.toLowerCase().contains(search) ||
+                        DoctorRepository.doctors
+                            .firstWhere(
+                              (doctor) => doctor.loginId == item.doctorLoginId,
+                              orElse: () => const DoctorAccount(
+                                name: '',
+                                email: '',
+                                loginId: '',
+                              ),
+                            )
+                            .name
+                            .toLowerCase()
+                            .contains(search);
+                  }).toList();
+
+                  if (filteredTreatments.isEmpty) {
+                    return Center(
                       child: Text(
                         'ไม่พบประวัติสำหรับผู้ป่วย ${widget.patientName}',
                         style: const TextStyle(color: Color(0xff5b8a8f)),
                         textAlign: TextAlign.center,
                       ),
-                    )
-                  : ListView.separated(
-                      itemCount: filteredTreatments.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 10),
-                      itemBuilder: (context, index) {
-                        final item = filteredTreatments[index];
-                        final doctor = DoctorRepository.doctors.firstWhere(
-                          (doctor) => doctor.loginId == item.doctorLoginId,
-                          orElse: () => const DoctorAccount(
-                            name: 'ไม่ทราบหมอ',
-                            email: '',
-                            loginId: '',
-                          ),
-                        );
-                        return InkWell(
-                          onTap: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => PatientTreatmentDetailPage(
-                                  treatment: item,
-                                  doctorName: doctor.name,
-                                ),
+                    );
+                  }
+                  return ListView.separated(
+                    itemCount: filteredTreatments.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 10),
+                    itemBuilder: (context, index) {
+                      final item = filteredTreatments[index];
+                      final doctor = DoctorRepository.doctors.firstWhere(
+                        (doctor) => doctor.loginId == item.doctorLoginId,
+                        orElse: () => const DoctorAccount(
+                          name: 'ไม่ทราบหมอ',
+                          email: '',
+                          loginId: '',
+                        ),
+                      );
+                      return InkWell(
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => PatientTreatmentDetailPage(
+                                treatment: item,
+                                doctorName: doctor.name,
                               ),
-                            );
-                          },
-                          child: _HistoryItem(
-                            title: 'หมอ ${doctor.name}',
-                            subtitle:
-                                '${item.treatmentType} • ${item.bodyPart} • ${item.setCount} เซ็ต • ${item.dateIso}',
-                            note: item.note,
-                          ),
-                        );
-                      },
-                    ),
+                            ),
+                          );
+                        },
+                        child: _HistoryItem(
+                          title: 'หมอ ${doctor.name}',
+                          subtitle:
+                              '${item.treatmentType} • ${item.bodyPart} • ${item.setCount} เซ็ต • ${item.dateIso}',
+                          note: item.note,
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
             ),
           ],
         ),

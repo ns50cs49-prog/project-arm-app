@@ -60,6 +60,7 @@ class TreatmentHistoryItem {
   const TreatmentHistoryItem({
     required this.doctorLoginId,
     required this.patientName,
+    this.patientUserId,
     required this.treatmentType,
     required this.bodyPart,
     required this.setCount,
@@ -69,6 +70,7 @@ class TreatmentHistoryItem {
 
   final String doctorLoginId;
   final String patientName;
+  final String? patientUserId;
   final String treatmentType;
   final String bodyPart;
   final int setCount;
@@ -92,54 +94,6 @@ class DoctorRepository {
       name: 'น.สพ. ทรงพล ใจดี',
       email: 'songpol@example.com',
       loginId: 'doc1003',
-    ),
-  ];
-
-  static final List<TreatmentHistoryItem> _treatmentHistory = [
-    const TreatmentHistoryItem(
-      doctorLoginId: 'doc1001',
-      patientName: 'สมศรี คงดี',
-      treatmentType: 'กายภาพบำบัดหลังผ่าตัด',
-      bodyPart: 'ข้อเข่า',
-      setCount: 3,
-      dateIso: '2026-08-01',
-      note: 'ท่าบริหารข้อเข่า',
-    ),
-    const TreatmentHistoryItem(
-      doctorLoginId: 'doc1001',
-      patientName: 'อารีย์ มณี',
-      treatmentType: 'กายภาพบำบัดหลังเกิดอุบัติเหตุ',
-      bodyPart: 'สะโพกและขา',
-      setCount: 4,
-      dateIso: '2026-07-24',
-      note: 'เพิ่มความแข็งแรงของกล้ามเนื้อ',
-    ),
-    const TreatmentHistoryItem(
-      doctorLoginId: 'doc1002',
-      patientName: 'สมศรี คงดี',
-      treatmentType: 'กายภาพบำบัดหลังผ่าตัด',
-      bodyPart: 'ข้อเข่า',
-      setCount: 2,
-      dateIso: '2026-07-10',
-      note: 'ฝึกเดินและยืน',
-    ),
-    const TreatmentHistoryItem(
-      doctorLoginId: 'doc1002',
-      patientName: 'พงศ์พัฒน์ วงศ์ศรี',
-      treatmentType: 'ฟื้นฟูหลังให้กำลัง',
-      bodyPart: 'หลังส่วนล่าง',
-      setCount: 3,
-      dateIso: '2026-06-18',
-      note: 'กายภาพเพื่อความคล่องตัว',
-    ),
-    const TreatmentHistoryItem(
-      doctorLoginId: 'doc1003',
-      patientName: 'อารีย์ มณี',
-      treatmentType: 'กายภาพบำบัดไหล่',
-      bodyPart: 'ไหล่และต้นแขน',
-      setCount: 3,
-      dateIso: '2026-06-01',
-      note: 'บริหารกล้ามเนื้อไหล่และหลัง',
     ),
   ];
 
@@ -381,6 +335,7 @@ class DoctorRepository {
     return TreatmentHistoryItem(
       doctorLoginId: data['doctorLoginId'] as String? ?? '',
       patientName: data['patientName'] as String? ?? '',
+      patientUserId: data['patientUserId'] as String?,
       treatmentType: data['treatmentType'] as String? ?? '',
       bodyPart: data['bodyPart'] as String? ?? '',
       setCount: (data['setCount'] as num?)?.toInt() ?? 0,
@@ -389,13 +344,50 @@ class DoctorRepository {
     );
   }
 
-  /// Real, persisted treatment records for a doctor (separate from the
-  /// static demo `_treatmentHistory` list below).
+  /// Real, persisted treatment records for a doctor.
   static Stream<List<TreatmentHistoryItem>> watchTreatmentsForDoctor(
     String doctorLoginId,
   ) {
     return _treatmentHistoryCollection
         .where('doctorLoginId', isEqualTo: doctorLoginId)
+        .snapshots()
+        .map(
+          (snapshot) =>
+              snapshot.docs.map(_treatmentFromDoc).toList()
+                ..sort((a, b) => b.dateIso.compareTo(a.dateIso)),
+        );
+  }
+
+  /// Every persisted treatment record — used by the admin history views.
+  static Stream<List<TreatmentHistoryItem>> watchAllTreatments() {
+    return _treatmentHistoryCollection.snapshots().map(
+      (snapshot) =>
+          snapshot.docs.map(_treatmentFromDoc).toList()
+            ..sort((a, b) => b.dateIso.compareTo(a.dateIso)),
+    );
+  }
+
+  /// A patient's own treatment history, matched by their Firebase Auth uid.
+  static Stream<List<TreatmentHistoryItem>> watchTreatmentsForPatientUserId(
+    String userId,
+  ) {
+    return _treatmentHistoryCollection
+        .where('patientUserId', isEqualTo: userId)
+        .snapshots()
+        .map(
+          (snapshot) =>
+              snapshot.docs.map(_treatmentFromDoc).toList()
+                ..sort((a, b) => b.dateIso.compareTo(a.dateIso)),
+        );
+  }
+
+  /// A patient's treatment history matched by name — used by the admin
+  /// patient-management screen, which only has the patient's name to go on.
+  static Stream<List<TreatmentHistoryItem>> watchTreatmentsForPatientName(
+    String patientName,
+  ) {
+    return _treatmentHistoryCollection
+        .where('patientName', isEqualTo: patientName)
         .snapshots()
         .map(
           (snapshot) =>
@@ -455,44 +447,6 @@ class DoctorRepository {
         }
       });
     });
-  }
-
-  static List<TreatmentHistoryItem> getTreatmentsForDoctor(String loginId) {
-    final normalizedLoginId = loginId.trim().toLowerCase();
-    return _treatmentHistory
-        .where(
-          (entry) =>
-              entry.doctorLoginId.trim().toLowerCase() == normalizedLoginId,
-        )
-        .toList();
-  }
-
-  static List<TreatmentHistoryItem> getTreatmentsForPatient(
-    String patientName,
-  ) {
-    final normalizedPatientName = patientName.trim().toLowerCase();
-    return _treatmentHistory
-        .where(
-          (entry) =>
-              entry.patientName.trim().toLowerCase() == normalizedPatientName,
-        )
-        .toList();
-  }
-
-  static List<TreatmentHistoryItem> getTreatmentsForPatientAndDoctor(
-    String patientName,
-    String doctorLoginId,
-  ) {
-    final normalizedPatientName = patientName.trim().toLowerCase();
-    final normalizedDoctorLoginId = doctorLoginId.trim().toLowerCase();
-    return _treatmentHistory.where((entry) {
-      return entry.patientName.trim().toLowerCase() == normalizedPatientName &&
-          entry.doctorLoginId.trim().toLowerCase() == normalizedDoctorLoginId;
-    }).toList();
-  }
-
-  static List<String> getPatientNames() {
-    return _treatmentHistory.map((entry) => entry.patientName).toSet().toList();
   }
 
   static DoctorAccount? findByEmailAndLoginId(String email, String loginId) {

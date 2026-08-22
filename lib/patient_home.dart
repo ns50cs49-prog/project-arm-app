@@ -98,7 +98,7 @@ class _PatientHomePageState extends State<PatientHomePage> {
     final Widget body = switch (_selectedTab) {
       0 => _buildHomeTab(compact),
       1 => _buildQueueTab(compact),
-      2 => const HistoryPage(showBottomNav: false),
+      2 => HistoryPage(patientUserId: FirebaseAuth.instance.currentUser?.uid),
       _ => _buildAccountTab(),
     };
 
@@ -278,7 +278,7 @@ class _PatientHomePageState extends State<PatientHomePage> {
                     ),
                     builder: (context, queueSnapshot) {
                       final waitingList = queueSnapshot.data ?? const [];
-                      final aheadCount = waitingList
+                      final waitingAhead = waitingList
                           .where(
                             (a) =>
                                 ((a['queueNumber'] as String?) ?? '')
@@ -286,9 +286,22 @@ class _PatientHomePageState extends State<PatientHomePage> {
                                 0,
                           )
                           .length;
-                      return _QueueStatusCard(
-                        queueNumber: queueNumber,
-                        aheadCount: aheadCount,
+                      return StreamBuilder<List<Map<String, dynamic>>>(
+                        stream:
+                            DoctorRepository.watchInProgressAppointmentsForDoctor(
+                              doctorLoginId,
+                            ),
+                        builder: (context, inProgressSnapshot) {
+                          final beingTreated =
+                              (inProgressSnapshot.data ?? const [])
+                                  .isNotEmpty;
+                          final aheadCount =
+                              waitingAhead + (beingTreated ? 1 : 0);
+                          return _QueueStatusCard(
+                            queueNumber: queueNumber,
+                            aheadCount: aheadCount,
+                          );
+                        },
                       );
                     },
                   );
@@ -755,7 +768,7 @@ class _MyAppointmentCard extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   isBeingServed
-                      ? 'กำลังใช้งาน • คิว $queue'
+                      ? 'กำลังรักษา • คิว $queue'
                       : 'เวลา $time • คิว $queue',
                   style: const TextStyle(fontSize: 11, color: Color(0xff6b8f94)),
                 ),

@@ -223,43 +223,6 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 13),
-                      const Row(
-                        children: [
-                          Expanded(child: Divider(color: Color(0xffd8ebed))),
-                          Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 10),
-                            child: Text(
-                              'หรือ',
-                              style: TextStyle(
-                                fontSize: 9,
-                                color: Color(0xff6c999e),
-                              ),
-                            ),
-                          ),
-                          Expanded(child: Divider(color: Color(0xffd8ebed))),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      const Row(
-                        children: [
-                          Expanded(
-                            child: _Social(
-                              label: 'เข้าสู่ระบบด้วย Google',
-                              color: Color(0xff4285f4),
-                              letter: 'G',
-                            ),
-                          ),
-                          SizedBox(width: 8),
-                          Expanded(
-                            child: _Social(
-                              label: 'เข้าสู่ระบบด้วย Facebook',
-                              color: Color(0xff1877f2),
-                              letter: 'f',
-                            ),
-                          ),
-                        ],
-                      ),
                       const SizedBox(height: 16),
                       const Row(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -442,56 +405,6 @@ class _Input extends StatelessWidget {
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(7),
         borderSide: const BorderSide(color: Color(0xff14adb6), width: 1.4),
-      ),
-    ),
-  );
-}
-
-class _Social extends StatelessWidget {
-  const _Social({
-    required this.label,
-    required this.color,
-    required this.letter,
-  });
-  final String label;
-  final Color color;
-  final String letter;
-
-  @override
-  Widget build(BuildContext context) => SizedBox(
-    height: 37,
-    child: OutlinedButton(
-      onPressed: () {},
-      style: OutlinedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        side: const BorderSide(color: Color(0xffd9ebed)),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          CircleAvatar(
-            radius: 8,
-            backgroundColor: color,
-            child: Text(
-              letter,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-          const SizedBox(width: 4),
-          Flexible(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 7.5, color: Color(0xff557d82)),
-            ),
-          ),
-        ],
       ),
     ),
   );

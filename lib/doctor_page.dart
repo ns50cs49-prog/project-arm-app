@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import 'device_status.dart';
 import 'doctor_repository.dart';
 import 'login.dart';
+import 'profile_photo.dart';
 
 class DoctorPage extends StatefulWidget {
   const DoctorPage({super.key, required this.doctor});
@@ -18,6 +20,7 @@ class _DoctorPageState extends State<DoctorPage> {
   TimeOfDay? _startTime;
   TimeOfDay? _endTime;
   final _maxQueueController = TextEditingController();
+  late String _photoUrl = widget.doctor.photoUrl;
 
   final List<DoctorTreatmentHistory> _historicalRecords = const [
     DoctorTreatmentHistory(
@@ -274,22 +277,20 @@ class _DoctorPageState extends State<DoctorPage> {
     noteController.dispose();
 
     try {
-      await Future.wait([
-        DoctorRepository.markAppointmentCompleted(
-          id,
-        ).timeout(const Duration(seconds: 10)),
-        DoctorRepository.addTreatmentRecord(
-          doctorLoginId: widget.doctor.loginId,
-          doctorName: widget.doctor.name,
-          patientName: name,
-          patientUserId: userId,
-          treatmentType: treatmentType.isEmpty ? 'กายภาพบำบัด' : treatmentType,
-          bodyPart: bodyPart.isEmpty ? 'ไม่ระบุ' : bodyPart,
-          setCount: setCount,
-          dateIso: DateTime.now().toIso8601String(),
-          note: note,
-        ).timeout(const Duration(seconds: 10)),
-      ]);
+      await DoctorRepository.addTreatmentRecord(
+        doctorLoginId: widget.doctor.loginId,
+        doctorName: widget.doctor.name,
+        patientName: name,
+        patientUserId: userId,
+        treatmentType: treatmentType.isEmpty ? 'กายภาพบำบัด' : treatmentType,
+        bodyPart: bodyPart.isEmpty ? 'ไม่ระบุ' : bodyPart,
+        setCount: setCount,
+        dateIso: DateTime.now().toIso8601String(),
+        note: note,
+      ).timeout(const Duration(seconds: 10));
+      await DoctorRepository.markAppointmentCompleted(
+        id,
+      ).timeout(const Duration(seconds: 10));
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
@@ -352,6 +353,7 @@ class _DoctorPageState extends State<DoctorPage> {
               ],
             ),
             const SizedBox(height: 16),
+            const DeviceStatusCard(),
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -550,7 +552,7 @@ class _DoctorPageState extends State<DoctorPage> {
                   children: [
                     if (inProgress.isNotEmpty) ...[
                       const Text(
-                        'กำลังใช้งาน',
+                        'กำลังรักษา',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w700,
@@ -604,13 +606,10 @@ class _DoctorPageState extends State<DoctorPage> {
                                 ),
                               )
                             else
-                              ...bookings.asMap().entries.map(
-                                (entry) => Padding(
+                              ...bookings.map(
+                                (booking) => Padding(
                                   padding: const EdgeInsets.only(bottom: 10),
-                                  child: _QueueRow(
-                                    position: entry.key + 1,
-                                    booking: entry.value,
-                                  ),
+                                  child: _QueueRow(booking: booking),
                                 ),
                               ),
                             const SizedBox(height: 6),
@@ -632,7 +631,7 @@ class _DoctorPageState extends State<DoctorPage> {
                                 ),
                                 child: Text(
                                   inProgress.isNotEmpty
-                                      ? 'กำลังใช้งานอยู่'
+                                      ? 'กำลังรักษาอยู่'
                                       : 'เรียกคิว',
                                   style: const TextStyle(
                                     fontSize: 18,
@@ -727,15 +726,19 @@ class _DoctorPageState extends State<DoctorPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Center(
-                    child: CircleAvatar(
+                  Center(
+                    child: ProfilePhotoAvatar(
+                      photoUrl: _photoUrl,
                       radius: 40,
-                      backgroundColor: Color(0xffdef7f5),
-                      child: Icon(
-                        Icons.medical_services_rounded,
-                        size: 40,
-                        color: Color(0xff159ea3),
-                      ),
+                      storagePath:
+                          'profile_photos/doctors/${widget.doctor.loginId}.jpg',
+                      onUploaded: (url) {
+                        setState(() => _photoUrl = url);
+                        DoctorRepository.updateDoctorPhoto(
+                          widget.doctor.loginId,
+                          url,
+                        );
+                      },
                     ),
                   ),
                   const SizedBox(height: 14),
@@ -963,15 +966,13 @@ class _TimeChip extends StatelessWidget {
 }
 
 class _QueueRow extends StatelessWidget {
-  const _QueueRow({required this.position, required this.booking});
+  const _QueueRow({required this.booking});
 
-  final int position;
   final Map<String, dynamic> booking;
 
   @override
   Widget build(BuildContext context) {
-    final queueNumber = position.toString().padLeft(3, '0');
-    final time = (booking['time'] as String?)?.trim();
+    final queueNumber = booking['queueNumber'] as String? ?? '-';
     final name = _bookingPatientName(booking);
 
     return Container(
@@ -1002,26 +1003,13 @@ class _QueueRow extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xff114d58),
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  (time == null || time.isEmpty) ? 'ไม่ระบุเวลา' : time,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: Color(0xff6b8f94),
-                  ),
-                ),
-              ],
+            child: Text(
+              name,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: Color(0xff114d58),
+              ),
             ),
           ),
         ],
@@ -1039,7 +1027,6 @@ class _InProgressRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final queueNumber = booking['queueNumber'] as String? ?? '-';
-    final time = (booking['time'] as String?)?.trim();
     final name = _bookingPatientName(booking);
 
     return Container(
@@ -1083,7 +1070,7 @@ class _InProgressRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'กำลังใช้งาน${(time == null || time.isEmpty) ? '' : ' • $time'}',
+                  'กำลังรักษา',
                   style: const TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,

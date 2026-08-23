@@ -50,12 +50,14 @@ class DoctorAccount {
     required this.email,
     required this.loginId,
     this.phoneNumber = '',
+    this.photoUrl = '',
   });
 
   final String name;
   final String email;
   final String loginId;
   final String phoneNumber;
+  final String photoUrl;
 }
 
 class TreatmentHistoryItem {
@@ -86,12 +88,20 @@ class PatientRecord {
     required this.name,
     this.email = '',
     this.phone = '',
+    this.photoUrl = '',
+    this.adminSetPassword = '',
   });
 
   final String id;
   final String name;
   final String email;
   final String phone;
+  final String photoUrl;
+
+  /// The password the admin most recently set for this account via
+  /// `adminSetPatientPassword`, if any — see that Cloud Function for why
+  /// this can never reflect a password the patient set themselves.
+  final String adminSetPassword;
 }
 
 class DoctorRepository {
@@ -115,49 +125,29 @@ class DoctorRepository {
 
   static final List<TreatmentHistoryItem> _treatmentHistory = [
     const TreatmentHistoryItem(
-      doctorLoginId: 'doc1001',
-      patientName: 'สมศรี คงดี',
-      treatmentType: 'กายภาพบำบัดหลังผ่าตัด',
-      bodyPart: 'ข้อเข่า',
-      setCount: 3,
-      dateIso: '2026-08-01',
-      note: 'ท่าบริหารข้อเข่า',
+      doctorLoginId: 'doc1001', patientName: 'สมศรี คงดี',
+      treatmentType: 'กายภาพบำบัดหลังผ่าตัด', bodyPart: 'ข้อเข่า',
+      setCount: 3, dateIso: '2026-08-01', note: 'ท่าบริหารข้อเข่า',
     ),
     const TreatmentHistoryItem(
-      doctorLoginId: 'doc1001',
-      patientName: 'อารีย์ มณี',
-      treatmentType: 'กายภาพบำบัดหลังเกิดอุบัติเหตุ',
-      bodyPart: 'สะโพกและขา',
-      setCount: 4,
-      dateIso: '2026-07-24',
-      note: 'เพิ่มความแข็งแรงของกล้ามเนื้อ',
+      doctorLoginId: 'doc1001', patientName: 'อารีย์ มณี',
+      treatmentType: 'กายภาพบำบัดหลังเกิดอุบัติเหตุ', bodyPart: 'สะโพกและขา',
+      setCount: 4, dateIso: '2026-07-24', note: 'เพิ่มความแข็งแรงของกล้ามเนื้อ',
     ),
     const TreatmentHistoryItem(
-      doctorLoginId: 'doc1002',
-      patientName: 'สมศรี คงดี',
-      treatmentType: 'กายภาพบำบัดหลังผ่าตัด',
-      bodyPart: 'ข้อเข่า',
-      setCount: 2,
-      dateIso: '2026-07-10',
-      note: 'ฝึกเดินและยืน',
+      doctorLoginId: 'doc1002', patientName: 'สมศรี คงดี',
+      treatmentType: 'กายภาพบำบัดหลังผ่าตัด', bodyPart: 'ข้อเข่า',
+      setCount: 2, dateIso: '2026-07-10', note: 'ฝึกเดินและยืน',
     ),
     const TreatmentHistoryItem(
-      doctorLoginId: 'doc1002',
-      patientName: 'พงศ์พัฒน์ วงศ์ศรี',
-      treatmentType: 'ฟื้นฟูหลังให้กำลัง',
-      bodyPart: 'หลังส่วนล่าง',
-      setCount: 3,
-      dateIso: '2026-06-18',
-      note: 'กายภาพเพื่อความคล่องตัว',
+      doctorLoginId: 'doc1002', patientName: 'พงศ์พัฒน์ วงศ์ศรี',
+      treatmentType: 'ฟื้นฟูหลังให้กำลัง', bodyPart: 'หลังส่วนล่าง',
+      setCount: 3, dateIso: '2026-06-18', note: 'กายภาพเพื่อความคล่องตัว',
     ),
     const TreatmentHistoryItem(
-      doctorLoginId: 'doc1003',
-      patientName: 'อารีย์ มณี',
-      treatmentType: 'กายภาพบำบัดไหล่',
-      bodyPart: 'ไหล่และต้นแขน',
-      setCount: 3,
-      dateIso: '2026-06-01',
-      note: 'บริหารกล้ามเนื้อไหล่และหลัง',
+      doctorLoginId: 'doc1003', patientName: 'อารีย์ มณี',
+      treatmentType: 'กายภาพบำบัดไหล่', bodyPart: 'ไหล่และต้นแขน',
+      setCount: 3, dateIso: '2026-06-01', note: 'บริหารกล้ามเนื้อไหล่และหลัง',
     ),
   ];
 
@@ -181,12 +171,62 @@ class DoctorRepository {
 
   static List<DoctorAccount> get doctors => List.unmodifiable(_doctors);
 
+  static Future<List<DoctorAccount>> getDoctorAccountsFuture() async {
+    var snapshot = await _doctorCollection.get();
+    if (snapshot.docs.isEmpty) {
+      final settingsRef = FirebaseFirestore.instance
+          .collection('settings')
+          .doc('doctorAccounts');
+      final seeded = await settingsRef.get();
+      // Old installs created only `seededAt`; upgrade them once so the
+      // original doctor accounts are actually stored in Firestore.
+      if ((seeded.data()?['doctorSeedVersion'] as num?)?.toInt() != 1) {
+        final batch = FirebaseFirestore.instance.batch();
+        for (final doctor in _doctors) {
+          batch.set(_doctorCollection.doc(doctor.loginId), {
+            'name': doctor.name,
+            'email': doctor.email,
+            'loginId': doctor.loginId,
+            'phoneNumber': doctor.phoneNumber,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+        }
+        batch.set(settingsRef, {
+          'seededAt': FieldValue.serverTimestamp(),
+          'doctorSeedVersion': 1,
+        }, SetOptions(merge: true));
+        await batch.commit();
+        snapshot = await _doctorCollection.get();
+      }
+    }
+
+    final accounts = snapshot.docs.map((doc) {
+      final data = doc.data();
+      return DoctorAccount(
+        name: data['name'] as String? ?? 'หมอ',
+        email: data['email'] as String? ?? '',
+        loginId: data['loginId'] as String? ?? doc.id,
+        phoneNumber: data['phoneNumber'] as String? ?? '',
+        photoUrl: data['photoUrl'] as String? ?? '',
+      );
+    }).toList()..sort((a, b) => a.name.compareTo(b.name));
+    _doctors
+      ..clear()
+      ..addAll(accounts);
+    return accounts;
+  }
+
   static void addDoctor(DoctorAccount doctor) {
     _doctors.add(doctor);
   }
 
   static Future<void> createDoctorAccount(DoctorAccount doctor) async {
-    await _doctorCollection.doc(doctor.loginId.trim()).set({
+    final id = doctor.loginId.trim();
+    final existing = await _doctorCollection.doc(id).get();
+    if (existing.exists) {
+      throw StateError('รหัสหมอ "$id" ถูกใช้งานแล้ว');
+    }
+    await _doctorCollection.doc(id).set({
       'name': doctor.name,
       'email': doctor.email,
       'loginId': doctor.loginId,
@@ -198,33 +238,54 @@ class DoctorRepository {
     }
   }
 
+  /// Checks Firestore first (the source of truth admin edits write to), not
+  /// the in-memory `_doctors` cache — a fresh app session starts that cache
+  /// out as the 3 hardcoded seed doctors with their *original* loginId, so
+  /// checking it first let a doctor's old loginId keep working forever
+  /// after the admin changed it, since this would match and return before
+  /// ever consulting Firestore. Firestore is only skipped if unreachable.
   static Future<DoctorAccount?> findDoctorAccount(
     String email,
     String loginId,
   ) async {
-    final localDoctor = findByEmailAndLoginId(email, loginId);
-    if (localDoctor != null) return localDoctor;
+    final normalizedEmail = email.trim();
+    final normalizedLoginId = loginId.trim();
 
-    final snapshot = await _doctorCollection
-        .where('email', isEqualTo: email.trim())
-        .get();
-    for (final doc in snapshot.docs) {
-      final data = doc.data();
-      if ((data['loginId'] as String? ?? doc.id).trim() != loginId.trim()) {
-        continue;
+    try {
+      final snapshot = await _doctorCollection
+          .where('email', isEqualTo: normalizedEmail)
+          .get();
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        if ((data['loginId'] as String? ?? doc.id).trim() !=
+            normalizedLoginId) {
+          continue;
+        }
+        final doctor = DoctorAccount(
+          name: data['name'] as String? ?? 'หมอ',
+          email: data['email'] as String? ?? '',
+          loginId: data['loginId'] as String? ?? doc.id,
+          phoneNumber: data['phoneNumber'] as String? ?? '',
+          photoUrl: data['photoUrl'] as String? ?? '',
+        );
+        final index = _doctors.indexWhere(
+          (item) =>
+              item.email.trim().toLowerCase() ==
+              normalizedEmail.toLowerCase(),
+        );
+        if (index != -1) {
+          _doctors[index] = doctor;
+        } else {
+          addDoctor(doctor);
+        }
+        return doctor;
       }
-      final doctor = DoctorAccount(
-        name: data['name'] as String? ?? 'หมอ',
-        email: data['email'] as String? ?? '',
-        loginId: data['loginId'] as String? ?? doc.id,
-        phoneNumber: data['phoneNumber'] as String? ?? '',
-      );
-      if (!_doctors.any((item) => item.loginId == doctor.loginId)) {
-        addDoctor(doctor);
-      }
-      return doctor;
+      return null;
+    } on FirebaseException {
+      // Firestore unreachable — fall back to whatever's cached locally
+      // rather than locking every doctor out on a network hiccup.
+      return findByEmailAndLoginId(email, loginId);
     }
-    return null;
   }
 
   static void removeDoctor(String loginId) {
@@ -454,13 +515,50 @@ class DoctorRepository {
     );
   }
 
-  /// Real, persisted treatment records for a doctor (separate from the
-  /// static demo `_treatmentHistory` list below).
+  /// Real, persisted treatment records for a doctor.
   static Stream<List<TreatmentHistoryItem>> watchTreatmentsForDoctor(
     String doctorLoginId,
   ) {
     return _treatmentHistoryCollection
         .where('doctorLoginId', isEqualTo: doctorLoginId)
+        .snapshots()
+        .map(
+          (snapshot) =>
+              snapshot.docs.map(_treatmentFromDoc).toList()
+                ..sort((a, b) => b.dateIso.compareTo(a.dateIso)),
+        );
+  }
+
+  /// Every persisted treatment record — used by the admin history views.
+  static Stream<List<TreatmentHistoryItem>> watchAllTreatments() {
+    return _treatmentHistoryCollection.snapshots().map(
+      (snapshot) =>
+          snapshot.docs.map(_treatmentFromDoc).toList()
+            ..sort((a, b) => b.dateIso.compareTo(a.dateIso)),
+    );
+  }
+
+  /// A patient's own treatment history, matched by their Firebase Auth uid.
+  static Stream<List<TreatmentHistoryItem>> watchTreatmentsForPatientUserId(
+    String userId,
+  ) {
+    return _treatmentHistoryCollection
+        .where('patientUserId', isEqualTo: userId)
+        .snapshots()
+        .map(
+          (snapshot) =>
+              snapshot.docs.map(_treatmentFromDoc).toList()
+                ..sort((a, b) => b.dateIso.compareTo(a.dateIso)),
+        );
+  }
+
+  /// A patient's treatment history matched by name — used by the admin
+  /// patient-management screen, which only has the patient's name to go on.
+  static Stream<List<TreatmentHistoryItem>> watchTreatmentsForPatientName(
+    String patientName,
+  ) {
+    return _treatmentHistoryCollection
+        .where('patientName', isEqualTo: patientName)
         .snapshots()
         .map(
           (snapshot) =>
@@ -598,6 +696,8 @@ class DoctorRepository {
       String? patientName, {
       String? email,
       String? phone,
+      String? photoUrl,
+      String? adminSetPassword,
     }) {
       final id = (patientId ?? '').trim();
       final name = (patientName ?? '').trim();
@@ -612,6 +712,8 @@ class DoctorRepository {
             name: name.isNotEmpty ? name : 'ผู้ป่วย',
             email: (email ?? '').trim(),
             phone: (phone ?? '').trim(),
+            photoUrl: (photoUrl ?? '').trim(),
+            adminSetPassword: (adminSetPassword ?? '').trim(),
           ),
         );
         return;
@@ -641,6 +743,8 @@ class DoctorRepository {
         data['name'] as String?,
         email: data['email'] as String?,
         phone: data['phone'] as String?,
+        photoUrl: data['photoUrl'] as String?,
+        adminSetPassword: data['adminSetPassword'] as String?,
       );
     }
 
@@ -673,6 +777,17 @@ class DoctorRepository {
     final records = recordsById.values.toList()
       ..sort((a, b) => a.name.compareTo(b.name));
     return records;
+  }
+
+  /// Lets a patient (or the admin, who also has a `users/{uid}` doc) set
+  /// their own profile photo.
+  static Future<void> updateUserPhoto(String uid, String photoUrl) {
+    return _withRetry(
+      () => FirebaseFirestore.instance.collection('users').doc(uid).set({
+        'photoUrl': photoUrl,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true)),
+    );
   }
 
   static Future<void> updateDoctorAccount({
@@ -711,10 +826,34 @@ class DoctorRepository {
       'email': doctor.email,
       'loginId': newId,
       'phoneNumber': doctor.phoneNumber,
+      'photoUrl': doctor.photoUrl,
       'updatedAt': FieldValue.serverTimestamp(),
     });
     final index = _doctors.indexWhere((item) => item.loginId == oldId);
     if (index != -1) _doctors[index] = doctor;
+  }
+
+  /// Lets a doctor set their own profile photo without going through the
+  /// full account-edit flow (which would also require re-typing every other
+  /// field). Firestore doc id doesn't change here, so a plain merge is safe.
+  static Future<void> updateDoctorPhoto(String loginId, String photoUrl) {
+    final id = loginId.trim();
+    final index = _doctors.indexWhere((item) => item.loginId == id);
+    if (index != -1) {
+      _doctors[index] = DoctorAccount(
+        name: _doctors[index].name,
+        email: _doctors[index].email,
+        loginId: _doctors[index].loginId,
+        phoneNumber: _doctors[index].phoneNumber,
+        photoUrl: photoUrl,
+      );
+    }
+    return _withRetry(
+      () => _doctorCollection.doc(id).set({
+        'photoUrl': photoUrl,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true)),
+    );
   }
 
   static Future<void> deleteDoctorAccount(String loginId) async {

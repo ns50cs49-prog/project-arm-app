@@ -1,7 +1,5 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 
 import 'admin_home.dart';
@@ -23,17 +21,6 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await initializeFirebase();
-
-  // Dev-only: point Firestore at the local emulator so testing doesn't need
-  // a billing-enabled cloud project. Remove this block once the real
-  // Firestore database is set up (Blaze plan enabled).
-  if (kDebugMode) {
-    // Use the dev machine's LAN IP (not localhost/adb reverse) — the
-    // Android Firestore SDK's gRPC channel misbehaves over the adb reverse
-    // loopback tunnel (spurious "Channel shutdownNow" errors). Phone and PC
-    // must be on the same WiFi network. Update this IP if it changes.
-    FirebaseFirestore.instance.useFirestoreEmulator('10.10.0.169', 8080);
-  }
 
   runApp(const QueueApp());
 }

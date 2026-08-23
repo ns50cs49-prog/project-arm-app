@@ -1,13 +1,12 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
 
+import 'device_status.dart';
 import 'history.dart';
 import 'login.dart';
 import 'doctor_repository.dart';
-
-enum DeviceHealthState { offline, online, working }
+import 'profile_photo.dart';
 
 class PatientHomePage extends StatefulWidget {
   const PatientHomePage({super.key, this.hideBottomNav = false});
@@ -21,73 +20,15 @@ class PatientHomePage extends StatefulWidget {
 class _PatientHomePageState extends State<PatientHomePage> {
   int _selectedTab = 0;
 
-  static DateTime? _parseTimestamp(Object? value) {
-    if (value is int) {
-      return DateTime.fromMillisecondsSinceEpoch(value);
-    }
-    if (value is num) {
-      return DateTime.fromMillisecondsSinceEpoch(value.round());
-    }
-    if (value is String) {
-      final parsedMs = int.tryParse(value);
-      if (parsedMs != null) {
-        return DateTime.fromMillisecondsSinceEpoch(parsedMs);
-      }
-      return DateTime.tryParse(value);
-    }
-    return null;
-  }
-
-  static DeviceHealthState _resolveDeviceHealth({
-    required Object? rawStatus,
-    required Object? updatedAtValue,
-    DateTime? now,
-    Duration staleThreshold = const Duration(seconds: 30),
-  }) {
-    final currentTime = now ?? DateTime.now();
-    final normalized = (rawStatus?.toString().trim().toLowerCase() ?? '')
-        .replaceAll(' ', '')
-        .replaceAll('"', '')
-        .replaceAll("'", '')
-        .replaceAll('`', '')
-        .replaceAll('\n', '')
-        .replaceAll('\r', '');
-    final lastUpdatedAt = _parseTimestamp(updatedAtValue);
-    final isFresh = lastUpdatedAt != null &&
-        currentTime.difference(lastUpdatedAt) <= staleThreshold;
-
-    if (normalized == 'working' ||
-        normalized == 'on' ||
-        normalized == 'running' ||
-        normalized == 'ทำงาน' ||
-        normalized == 'กำลังทำงาน') {
-      return DeviceHealthState.working;
-    }
-
-    if (normalized == 'connected' ||
-        normalized == 'online' ||
-        normalized == 'ready' ||
-        normalized == 'ออนไลน์' ||
-        normalized == 'พร้อมใช้งาน' ||
-        normalized == 'ใช้งานได้') {
-      return isFresh || lastUpdatedAt == null
-          ? DeviceHealthState.online
-          : DeviceHealthState.offline;
-    }
-
-    if (normalized == 'offline' ||
-        normalized == 'off' ||
-        normalized == 'ออฟไลน์' ||
-        normalized == 'ปิด' ||
-        normalized == 'disconnected' ||
-        normalized == 'stop' ||
-        normalized == 'stopped') {
-      return DeviceHealthState.offline;
-    }
-
-    return isFresh || lastUpdatedAt == null
-        ? DeviceHealthState.online
-        : DeviceHealthState.offline;
+  @override
+  void initState() {
+    super.initState();
+    // Refresh the in-memory doctor list from Firestore so doctors the admin
+    // just added show up here too, not only after the admin's own screen
+    // happens to have loaded them in this app instance.
+    DoctorRepository.getDoctorAccountsFuture().then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   void _setTab(int value) => setState(() => _selectedTab = value);
@@ -121,7 +62,7 @@ class _PatientHomePageState extends State<PatientHomePage> {
     final Widget body = switch (_selectedTab) {
       0 => _buildHomeTab(compact),
       1 => _buildQueueTab(compact),
-      2 => const HistoryPage(showBottomNav: false),
+      2 => HistoryPage(patientUserId: FirebaseAuth.instance.currentUser?.uid),
       _ => _buildAccountTab(),
     };
 
@@ -165,98 +106,7 @@ class _PatientHomePageState extends State<PatientHomePage> {
             const SizedBox(height: 8),
             const _HomeProfileCard(),
             const SizedBox(height: 14),
-            StreamBuilder<DatabaseEvent>(
-              stream: FirebaseDatabase.instance.ref('esp32/led').onValue,
-              builder: (context, snapshot) {
-                final data = snapshot.data?.snapshot.value;
-                final map = data is Map
-                    ? Map<String, dynamic>.from(data)
-                    : <String, dynamic>{};
-                final rawStatus = map['status'] ?? map['state'];
-                final status = rawStatus?.toString().toUpperCase() ?? '';
-                final updatedAtValue =
-                    map['updatedAt'] ??
-                    map['timestamp'] ??
-                    map['lastSeen'] ??
-                    map['time'];
-
-                final deviceState = _resolveDeviceHealth(
-                  rawStatus: rawStatus,
-                  updatedAtValue: updatedAtValue,
-                );
-
-                final label = switch (deviceState) {
-                  DeviceHealthState.working => 'กำลังทำงาน',
-                  DeviceHealthState.online => 'ออนไลน์',
-                  DeviceHealthState.offline => 'ออฟไลน์',
-                };
-                final color = switch (deviceState) {
-                  DeviceHealthState.working => const Color(0xff0d9984),
-                  DeviceHealthState.online => const Color(0xfff39a1d),
-                  DeviceHealthState.offline => const Color(0xff7a8d92),
-                };
-
-                return Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(18),
-                  margin: const EdgeInsets.only(bottom: 14),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(22),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x120d7b82),
-                        blurRadius: 12,
-                        offset: Offset(0, 6),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'สถานะเครื่องกายภาพ',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xff114d58),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Container(
-                            width: 16,
-                            height: 16,
-                            decoration: BoxDecoration(
-                              color: color,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Text(
-                            label,
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: color,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 14),
-                      Text(
-                        'status: $status',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: Color(0xff5f8d93),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
+            const DeviceStatusCard(),
             if (user == null)
               _NoBookingCard(
                 message: 'กรุณาเข้าสู่ระบบ',
@@ -301,7 +151,7 @@ class _PatientHomePageState extends State<PatientHomePage> {
                     ),
                     builder: (context, queueSnapshot) {
                       final waitingList = queueSnapshot.data ?? const [];
-                      final aheadCount = waitingList
+                      final waitingAhead = waitingList
                           .where(
                             (a) =>
                                 ((a['queueNumber'] as String?) ?? '')
@@ -309,9 +159,22 @@ class _PatientHomePageState extends State<PatientHomePage> {
                                 0,
                           )
                           .length;
-                      return _QueueStatusCard(
-                        queueNumber: queueNumber,
-                        aheadCount: aheadCount,
+                      return StreamBuilder<List<Map<String, dynamic>>>(
+                        stream:
+                            DoctorRepository.watchInProgressAppointmentsForDoctor(
+                              doctorLoginId,
+                            ),
+                        builder: (context, inProgressSnapshot) {
+                          final beingTreated =
+                              (inProgressSnapshot.data ?? const [])
+                                  .isNotEmpty;
+                          final aheadCount =
+                              waitingAhead + (beingTreated ? 1 : 0);
+                          return _QueueStatusCard(
+                            queueNumber: queueNumber,
+                            aheadCount: aheadCount,
+                          );
+                        },
                       );
                     },
                   );
@@ -464,6 +327,7 @@ class _PatientHomePageState extends State<PatientHomePage> {
   }
 
   Widget _buildAccountTab() {
+    final user = FirebaseAuth.instance.currentUser;
     return SafeArea(
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
@@ -484,72 +348,38 @@ class _PatientHomePageState extends State<PatientHomePage> {
               style: TextStyle(fontSize: 13, color: Color(0xff5f8d93)),
             ),
             const SizedBox(height: 18),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x1b3f7784),
-                    blurRadius: 16,
-                    offset: Offset(0, 8),
-                  ),
-                ],
+            if (user == null)
+              _buildAccountFields(name: '-', email: '-', phone: '-')
+            else
+              StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                stream: FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(user.uid)
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  final data = snapshot.data?.data();
+                  final storedName = (data?['name'] as String?)?.trim() ?? '';
+                  final name = storedName.isNotEmpty
+                      ? storedName
+                      : (user.displayName?.trim().isNotEmpty ?? false)
+                      ? user.displayName!.trim()
+                      : 'ผู้ใช้งาน';
+                  final storedEmail = (data?['email'] as String?)?.trim() ?? '';
+                  final email = storedEmail.isNotEmpty
+                      ? storedEmail
+                      : (user.email ?? '-');
+                  final storedPhone = (data?['phone'] as String?)?.trim() ?? '';
+                  final phone = storedPhone.isNotEmpty ? storedPhone : '-';
+                  final photoUrl = (data?['photoUrl'] as String?)?.trim() ?? '';
+                  return _buildAccountFields(
+                    name: name,
+                    email: email,
+                    phone: phone,
+                    photoUrl: photoUrl,
+                    uid: user.uid,
+                  );
+                },
               ),
-              child: Column(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Color(0xffe4fbfd),
-                    ),
-                    child: const CircleAvatar(
-                      radius: 38,
-                      backgroundColor: Color(0xffdef7f5),
-                      child: Icon(
-                        Icons.person_rounded,
-                        size: 42,
-                        color: Color(0xff159ea3),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  const Text(
-                    'ผู้ใช้งานทั่วไป',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xff114d58),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    'สมาชิกระบบ',
-                    style: TextStyle(fontSize: 12, color: Color(0xff5b8a8f)),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: const Color(0xffd8eef0)),
-              ),
-              child: Column(
-                children: [
-                  _buildAccountRow('ชื่อ', 'User'),
-                  const Divider(color: Color(0xffe7f2f3), height: 0),
-                  _buildAccountRow('อีเมล', 'user@example.com'),
-                  const Divider(color: Color(0xffe7f2f3), height: 0),
-                  _buildAccountRow('โทรศัพท์', '081-234-5678'),
-                ],
-              ),
-            ),
             const SizedBox(height: 20),
             SizedBox(
               height: 50,
@@ -572,6 +402,95 @@ class _PatientHomePageState extends State<PatientHomePage> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildAccountFields({
+    required String name,
+    required String email,
+    required String phone,
+    String photoUrl = '',
+    String? uid,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x1b3f7784),
+                blurRadius: 16,
+                offset: Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              if (uid == null)
+                Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Color(0xffe4fbfd),
+                  ),
+                  child: const CircleAvatar(
+                    radius: 38,
+                    backgroundColor: Color(0xffdef7f5),
+                    child: Icon(
+                      Icons.person_rounded,
+                      size: 42,
+                      color: Color(0xff159ea3),
+                    ),
+                  ),
+                )
+              else
+                ProfilePhotoAvatar(
+                  photoUrl: photoUrl,
+                  radius: 38,
+                  storagePath: 'profile_photos/patients/$uid.jpg',
+                  onUploaded: (url) =>
+                      DoctorRepository.updateUserPhoto(uid, url),
+                ),
+              const SizedBox(height: 14),
+              Text(
+                name,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xff114d58),
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'สมาชิกระบบ',
+                style: TextStyle(fontSize: 12, color: Color(0xff5b8a8f)),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: const Color(0xffd8eef0)),
+          ),
+          child: Column(
+            children: [
+              _buildAccountRow('ชื่อ', name),
+              const Divider(color: Color(0xffe7f2f3), height: 0),
+              _buildAccountRow('อีเมล', email),
+              const Divider(color: Color(0xffe7f2f3), height: 0),
+              _buildAccountRow('โทรศัพท์', phone),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -778,7 +697,7 @@ class _MyAppointmentCard extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   isBeingServed
-                      ? 'กำลังใช้งาน • คิว $queue'
+                      ? 'กำลังรักษา • คิว $queue'
                       : 'เวลา $time • คิว $queue',
                   style: const TextStyle(fontSize: 11, color: Color(0xff6b8f94)),
                 ),

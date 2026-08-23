@@ -1,5 +1,19 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
+
+/// Must match the `databaseURL` in firebase_options.dart. The Realtime
+/// Database for this project lives in `asia-southeast1`, not the default
+/// region — on Android, `FirebaseDatabase.instance` (no explicit URL)
+/// connects to the default endpoint first and gets forcefully disconnected
+/// by the server with "Database lives in a different region" and *no*
+/// automatic reconnect, so the app silently never receives any esp32/led
+/// updates. Always go through this instead of `FirebaseDatabase.instance`.
+final FirebaseDatabase esp32Database = FirebaseDatabase.instanceFor(
+  app: Firebase.app(),
+  databaseURL:
+      'https://project-arm-app-default-rtdb.asia-southeast1.firebasedatabase.app',
+);
 
 enum DeviceHealthState { offline, online, working }
 
@@ -82,7 +96,7 @@ class DeviceStatusCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<DatabaseEvent>(
-      stream: FirebaseDatabase.instance.ref('esp32/led').onValue,
+      stream: esp32Database.ref('esp32/led').onValue,
       builder: (context, snapshot) {
         final data = snapshot.data?.snapshot.value;
         final map = data is Map

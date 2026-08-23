@@ -297,7 +297,7 @@ class _AdminHomePageState extends State<AdminHomePage> {
                     gradientColors: const [Color(0xff9beaee), Color(0xff45bfc7)],
                     onTap: () {},
                     trailing: StreamBuilder<DatabaseEvent>(
-                      stream: FirebaseDatabase.instance.ref('esp32/led').onValue,
+                      stream: esp32Database.ref('esp32/led').onValue,
                       builder: (context, snapshot) {
                         final data = snapshot.data?.snapshot.value;
                         final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};

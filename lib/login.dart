@@ -161,34 +161,61 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                         ),
                       ),
+                      const SizedBox(height: 6),
                       SizedBox(
                         width: double.infinity,
-                        height: 47,
-                        child: ElevatedButton.icon(
-                          onPressed: _isLoading ? null : _login,
-                          icon: _isLoading
-                              ? const SizedBox(
-                                  height: 20,
-                                  width: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Icon(Icons.input_rounded, size: 20),
-                          label: Text(
-                            _isLoading ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
+                        height: 50,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xff1cc2c9), Color(0xff0d93a0)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
                             ),
+                            borderRadius: BorderRadius.circular(14),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Color(0x3313aeb7),
+                                blurRadius: 16,
+                                offset: Offset(0, 8),
+                              ),
+                            ],
                           ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xff14adb6),
-                            foregroundColor: Colors.white,
-                            elevation: 4,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
+                          child: Material(
+                            type: MaterialType.transparency,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(14),
+                              onTap: _isLoading ? null : _login,
+                              child: Center(
+                                child: _isLoading
+                                    ? const SizedBox(
+                                        height: 20,
+                                        width: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: const [
+                                          Icon(
+                                            Icons.input_rounded,
+                                            size: 20,
+                                            color: Colors.white,
+                                          ),
+                                          SizedBox(width: 8),
+                                          Text(
+                                            'เข้าสู่ระบบ',
+                                            style: TextStyle(
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.w700,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                              ),
                             ),
                           ),
                         ),
@@ -328,7 +355,7 @@ class _Brand extends StatelessWidget {
       ),
       const SizedBox(height: 4),
       const Text(
-        'ระบบเช็คสถนาะเครื่องและจองคิว',
+        'ระบบเช็คสถานะเครื่องและจองคิว',
         style: TextStyle(
           fontSize: 9.5,
           fontWeight: FontWeight.w700,
@@ -376,15 +403,19 @@ class _Input extends StatelessWidget {
       prefixIcon: Icon(icon, size: 18, color: const Color(0xff1babb4)),
       suffixIcon: trailing,
       filled: true,
-      fillColor: const Color(0xfffbffff),
+      fillColor: const Color(0xffeef9fa),
       contentPadding: const EdgeInsets.symmetric(vertical: 14),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide.none,
+      ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(7),
-        borderSide: const BorderSide(color: Color(0xffb8e1e4)),
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide.none,
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(7),
-        borderSide: const BorderSide(color: Color(0xff14adb6), width: 1.4),
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: Color(0xff14adb6), width: 1.6),
       ),
     ),
   );

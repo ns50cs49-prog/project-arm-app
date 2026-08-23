@@ -294,7 +294,7 @@ class _AdminHomePageState extends State<AdminHomePage> {
                   _DashboardCard(
                     label: 'สถานะเครื่อง',
                     icon: Icons.monitor_heart_outlined,
-                    backgroundColor: const Color(0xff9fe2e0),
+                    gradientColors: const [Color(0xff9beaee), Color(0xff45bfc7)],
                     onTap: () {},
                     trailing: StreamBuilder<DatabaseEvent>(
                       stream: FirebaseDatabase.instance.ref('esp32/led').onValue,
@@ -326,26 +326,37 @@ class _AdminHomePageState extends State<AdminHomePage> {
                           DeviceHealthState.offline => const Color(0xff7a8d92),
                         };
 
-                        return Row(
-                          children: [
-                            Container(
-                              width: 12,
-                              height: 12,
-                              decoration: BoxDecoration(
-                                color: color,
-                                shape: BoxShape.circle,
+                        return Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: .95),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 10,
+                                height: 10,
+                                decoration: BoxDecoration(
+                                  color: color,
+                                  shape: BoxShape.circle,
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              label,
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                                color: color,
+                              const SizedBox(width: 8),
+                              Text(
+                                label,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                  color: color,
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         );
                       },
                     ),
@@ -355,7 +366,7 @@ class _AdminHomePageState extends State<AdminHomePage> {
                     label: 'จัดการรายชื่อหมอ',
                     subtitle: 'เพิ่ม / แก้ไข / ลบรายชื่อหมอ',
                     icon: Icons.medical_information_outlined,
-                    backgroundColor: const Color(0xffa8e3de),
+                    gradientColors: const [Color(0xffb6ecd9), Color(0xff54c79f)],
                     onTap: () => _switchAdminMode(AdminMode.doctor),
                   ),
                   const SizedBox(height: 18),
@@ -363,7 +374,7 @@ class _AdminHomePageState extends State<AdminHomePage> {
                     label: 'จัดการรายชื่อผู้ป่วย',
                     subtitle: 'เพิ่ม / แก้ไข / ลบรายชื่อผู้ป่วย',
                     icon: Icons.people_alt_outlined,
-                    backgroundColor: const Color(0xffa8e3de),
+                    gradientColors: const [Color(0xffbcdcf7), Color(0xff5a9fe0)],
                     onTap: () => _switchAdminMode(AdminMode.patient),
                   ),
                 ],
@@ -1059,7 +1070,7 @@ class _DashboardCard extends StatelessWidget {
   const _DashboardCard({
     required this.label,
     required this.icon,
-    required this.backgroundColor,
+    required this.gradientColors,
     required this.onTap,
     this.subtitle,
     this.trailing,
@@ -1068,35 +1079,54 @@ class _DashboardCard extends StatelessWidget {
   final String label;
   final String? subtitle;
   final IconData icon;
-  final Color backgroundColor;
+  final List<Color> gradientColors;
   final VoidCallback onTap;
   final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
+    final deepColor = gradientColors.last;
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(26),
         onTap: onTap,
         child: Ink(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
           decoration: BoxDecoration(
-            color: backgroundColor,
-            borderRadius: BorderRadius.circular(24),
+            gradient: LinearGradient(
+              colors: gradientColors,
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(26),
+            boxShadow: [
+              BoxShadow(
+                color: deepColor.withValues(alpha: .35),
+                blurRadius: 16,
+                offset: const Offset(0, 8),
+              ),
+            ],
           ),
           child: Row(
             children: [
               Container(
-                width: 46,
-                height: 46,
+                width: 50,
+                height: 50,
                 decoration: BoxDecoration(
-                  color: const Color(0xfff4ffff),
-                  borderRadius: BorderRadius.circular(14),
+                  color: Colors.white.withValues(alpha: .95),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: deepColor.withValues(alpha: .25),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
                 ),
-                child: Icon(icon, color: const Color(0xff114d58), size: 28),
+                child: Icon(icon, color: const Color(0xff0d6f78), size: 26),
               ),
-              const SizedBox(width: 18),
+              const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1104,25 +1134,35 @@ class _DashboardCard extends StatelessWidget {
                     Text(
                       label,
                       style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xff114d58),
+                        fontSize: 19,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xff0c3d43),
                       ),
                     ),
                     if (subtitle != null) ...[
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 3),
                       Text(
                         subtitle!,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
-                          color: Color(0xff5f8d93),
+                          fontWeight: FontWeight.w600,
+                          color: const Color(
+                            0xff0c3d43,
+                          ).withValues(alpha: .65),
                         ),
                       ),
                     ],
                   ],
                 ),
               ),
-              ?trailing,
+              if (trailing != null)
+                trailing!
+              else
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: const Color(0xff0c3d43).withValues(alpha: .45),
+                  size: 26,
+                ),
             ],
           ),
         ),

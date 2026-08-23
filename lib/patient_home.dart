@@ -389,6 +389,8 @@ class _PatientHomePageState extends State<PatientHomePage> {
                 label: const Text('ออกจากระบบ'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xffff6b6b),
+                  elevation: 5,
+                  shadowColor: const Color(0xffff6b6b).withValues(alpha: .4),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
                   ),
@@ -762,6 +764,13 @@ class _DoctorListTile extends StatelessWidget {
             color: Colors.white,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: const Color(0xffd8eef0)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x0d0d7b82),
+                blurRadius: 10,
+                offset: Offset(0, 4),
+              ),
+            ],
           ),
           child: Row(
             children: [
@@ -1196,6 +1205,8 @@ class _NoBookingCard extends StatelessWidget {
             onPressed: onBookTap,
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xff10aeb5),
+              elevation: 6,
+              shadowColor: const Color(0xff10aeb5).withValues(alpha: .45),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -1349,6 +1360,8 @@ class _QueueStatusCard extends StatelessWidget {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xff0c8f96),
                       foregroundColor: Colors.white,
+                      elevation: 6,
+                      shadowColor: const Color(0xff0c8f96).withValues(alpha: .45),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -1489,10 +1502,23 @@ class _BottomNavigation extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(
-                    items[i].$1,
-                    size: 23,
-                    color: active ? color : const Color(0xff72999e),
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: active
+                          ? color.withValues(alpha: .14)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Icon(
+                      items[i].$1,
+                      size: 22,
+                      color: active ? color : const Color(0xff72999e),
+                    ),
                   ),
                   const SizedBox(height: 3),
                   Text(

@@ -50,6 +50,32 @@ class QueueApp extends StatelessWidget {
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff12aeb6)),
         fontFamily: 'Tahoma',
+        // Baseline tap-target sizing for every button in the app so
+        // buttons that don't explicitly set their own height (e.g. dialog
+        // actions, list-row buttons) are still comfortable to tap on a
+        // phone. Buttons wrapped in a fixed-height SizedBox elsewhere keep
+        // that explicit size — this only raises the floor for the rest.
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            minimumSize: const Size(64, 46),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          ),
+        ),
+        outlinedButtonTheme: OutlinedButtonThemeData(
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size(64, 46),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          ),
+        ),
+        textButtonTheme: TextButtonThemeData(
+          style: TextButton.styleFrom(
+            minimumSize: const Size(56, 44),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          ),
+        ),
+        iconButtonTheme: IconButtonThemeData(
+          style: IconButton.styleFrom(minimumSize: const Size(44, 44)),
+        ),
       ),
       home: const AuthGate(),
     );

@@ -460,6 +460,8 @@ class _DoctorPageState extends State<DoctorPage> {
                       onPressed: _addAvailability,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xff13a2ac),
+                        elevation: 6,
+                        shadowColor: const Color(0xff13a2ac).withValues(alpha: .45),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
                         ),
@@ -625,6 +627,10 @@ class _DoctorPageState extends State<DoctorPage> {
                                   disabledBackgroundColor: const Color(
                                     0xffb9dde0,
                                   ),
+                                  elevation: 6,
+                                  shadowColor: const Color(
+                                    0xff13a2ac,
+                                  ).withValues(alpha: .45),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(16),
                                   ),
@@ -814,6 +820,14 @@ class _DoctorPageState extends State<DoctorPage> {
       appBar: AppBar(
         title: const Text('หน้าคุณหมอ'),
         centerTitle: true,
+        backgroundColor: const Color(0xff13a2ac),
+        foregroundColor: Colors.white,
+        elevation: 0,
+        titleTextStyle: const TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.w700,
+          color: Colors.white,
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.logout_rounded),
@@ -1291,12 +1305,25 @@ class _DoctorNavItem extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                icon,
-                size: 24,
-                color: active
-                    ? const Color(0xff13a2ac)
-                    : const Color(0xff7b9da1),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 5,
+                ),
+                decoration: BoxDecoration(
+                  color: active
+                      ? const Color(0xff13a2ac).withValues(alpha: .14)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Icon(
+                  icon,
+                  size: 23,
+                  color: active
+                      ? const Color(0xff13a2ac)
+                      : const Color(0xff7b9da1),
+                ),
               ),
               const SizedBox(height: 4),
               Text(

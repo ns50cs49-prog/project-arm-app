@@ -1,11 +1,11 @@
 {
-    "name": "flutter_application_1",
-    "short_name": "flutter_application_1",
+    "name": "ARM ReMotion",
+    "short_name": "ARM ReMotion",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "ARM ReMotion physical therapy app.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

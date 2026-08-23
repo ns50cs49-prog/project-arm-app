@@ -89,7 +89,6 @@ class PatientRecord {
     this.email = '',
     this.phone = '',
     this.photoUrl = '',
-    this.adminSetPassword = '',
   });
 
   final String id;
@@ -97,11 +96,6 @@ class PatientRecord {
   final String email;
   final String phone;
   final String photoUrl;
-
-  /// The password the admin most recently set for this account via
-  /// `adminSetPatientPassword`, if any — see that Cloud Function for why
-  /// this can never reflect a password the patient set themselves.
-  final String adminSetPassword;
 }
 
 class DoctorRepository {
@@ -697,7 +691,6 @@ class DoctorRepository {
       String? email,
       String? phone,
       String? photoUrl,
-      String? adminSetPassword,
     }) {
       final id = (patientId ?? '').trim();
       final name = (patientName ?? '').trim();
@@ -713,7 +706,6 @@ class DoctorRepository {
             email: (email ?? '').trim(),
             phone: (phone ?? '').trim(),
             photoUrl: (photoUrl ?? '').trim(),
-            adminSetPassword: (adminSetPassword ?? '').trim(),
           ),
         );
         return;
@@ -744,7 +736,6 @@ class DoctorRepository {
         email: data['email'] as String?,
         phone: data['phone'] as String?,
         photoUrl: data['photoUrl'] as String?,
-        adminSetPassword: data['adminSetPassword'] as String?,
       );
     }
 

@@ -1,12 +1,10 @@
-import 'dart:convert';
-
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 
 import 'appointment.dart';
+import 'device_status.dart';
 import 'doctor_repository.dart';
 import 'history.dart';
 import 'login.dart';
@@ -303,49 +301,30 @@ class _AdminHomePageState extends State<AdminHomePage> {
                       builder: (context, snapshot) {
                         final data = snapshot.data?.snapshot.value;
                         final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
-                        final status = (map['status'] ?? '').toString().toUpperCase();
-
+                        final rawStatus = map['status'] ?? map['state'];
                         final updatedAtValue =
                             map['updatedAt'] ??
                             map['timestamp'] ??
                             map['lastSeen'] ??
                             map['time'];
 
-                        DateTime? updatedAt;
-                        if (updatedAtValue is int) {
-                          updatedAt = DateTime.fromMillisecondsSinceEpoch(updatedAtValue);
-                        } else if (updatedAtValue is num) {
-                          updatedAt = DateTime.fromMillisecondsSinceEpoch(updatedAtValue.round());
-                        } else if (updatedAtValue is String) {
-                          final parsed = int.tryParse(updatedAtValue);
-                          if (parsed != null) {
-                            updatedAt = DateTime.fromMillisecondsSinceEpoch(parsed);
-                          } else {
-                            updatedAt = DateTime.tryParse(updatedAtValue);
-                          }
-                        }
-
-                        final isWorking =
-                            status == 'ON' ||
-                            status == 'WORKING' ||
-                            status == 'RUNNING';
-                        final isStaleOnline =
-                            status == 'ONLINE' &&
-                            updatedAt != null &&
-                            DateTime.now().difference(updatedAt).inSeconds > 30;
-                        final isOffline =
-                            !snapshot.hasData ||
-                            snapshot.hasError ||
-                            status == 'OFF' ||
-                            status == 'OFFLINE' ||
-                            isStaleOnline;
-                        final isOnline = !isWorking && !isOffline && (status == 'ONLINE' || status == 'CONNECTED');
-                        final label = isWorking ? 'กำลังทำงาน' : isOnline ? 'ออนไลน์' : 'ออฟไลน์';
-                        final color = isWorking
-                            ? const Color(0xff0d9984)
-                            : isOnline
-                            ? const Color(0xfff39a1d)
-                            : const Color(0xff7a8d92);
+                        // Shared with the doctor/patient device status card
+                        // (device_status.dart) so all three roles always
+                        // agree on the same online/offline/working reading.
+                        final deviceState = resolveDeviceHealth(
+                          rawStatus: rawStatus,
+                          updatedAtValue: updatedAtValue,
+                        );
+                        final label = switch (deviceState) {
+                          DeviceHealthState.working => 'กำลังทำงาน',
+                          DeviceHealthState.online => 'ออนไลน์',
+                          DeviceHealthState.offline => 'ออฟไลน์',
+                        };
+                        final color = switch (deviceState) {
+                          DeviceHealthState.working => const Color(0xff0d9984),
+                          DeviceHealthState.online => const Color(0xfff39a1d),
+                          DeviceHealthState.offline => const Color(0xff7a8d92),
+                        };
 
                         return Row(
                           children: [
@@ -592,7 +571,6 @@ class _AdminHomePageState extends State<AdminHomePage> {
                               subtitle: [
                                 'อีเมล: ${patient.email.isEmpty ? '-' : patient.email}',
                                 'เบอร์โทร: ${patient.phone.isEmpty ? '-' : patient.phone}',
-                                'รหัสผ่าน: ${patient.adminSetPassword.isEmpty ? 'ไม่ทราบ' : patient.adminSetPassword}',
                               ].join('\n'),
                               selected: false,
                               imageUrl: patient.photoUrl,
@@ -1607,7 +1585,6 @@ class _PatientAccountPageState extends State<PatientAccountPage> {
                 email: email.text.trim(),
                 phone: phone.text.trim(),
                 photoUrl: _patient.photoUrl,
-                adminSetPassword: _patient.adminSetPassword,
               ),
             ),
             child: const Text('บันทึก'),
@@ -1640,129 +1617,6 @@ class _PatientAccountPageState extends State<PatientAccountPage> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
-  }
-
-  /// Sets the patient's Firebase Auth password directly (no reset email) by
-  /// calling the `adminSetPatientPassword` Cloud Function — the client SDK
-  /// can only change the *signed-in* user's own password, so setting
-  /// another account's password has to happen server-side with the Admin
-  /// SDK. The function itself checks the caller is the admin account.
-  ///
-  /// Calls the function's HTTPS endpoint directly with `package:http`
-  /// instead of going through `cloud_functions`/`FirebaseFunctions.instance`
-  /// — that SDK was observed to fail every call in this app with a bare,
-  /// contentless `FirebaseFunctionsException(code: internal, message:
-  /// internal)` *before ever sending a network request* (confirmed via the
-  /// browser's Network tab showing nothing at all), even across full
-  /// `flutter run` restarts and a retry loop. A plain HTTP POST following
-  /// the callable-functions wire protocol sidesteps that broken layer
-  /// entirely and gives real HTTP status codes/response bodies to debug.
-  Future<void> _changePasswordDirectly() async {
-    final email = _patient.email.trim();
-    if (email.isEmpty || !email.contains('@')) {
-      _showMessage('กรุณาระบุอีเมลก่อนเปลี่ยนรหัสผ่าน');
-      return;
-    }
-
-    final newPassword = await showDialog<String>(
-      context: context,
-      builder: (_) => const _ChangePasswordDialog(),
-    );
-    if (newPassword == null || !mounted) return;
-
-    setState(() => _saving = true);
-    try {
-      final idToken = await FirebaseAuth.instance.currentUser?.getIdToken();
-      if (idToken == null) {
-        _showErrorDialog('เซสชันแอดมินหมดอายุ กรุณาเข้าสู่ระบบใหม่แล้วลองอีกครั้ง');
-        return;
-      }
-
-      final response = await http
-          .post(
-            Uri.parse(
-              'https://us-central1-project-arm-app.cloudfunctions.net/adminSetPatientPassword',
-            ),
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer $idToken',
-            },
-            body: jsonEncode({
-              'data': {'email': email, 'newPassword': newPassword},
-            }),
-          )
-          .timeout(const Duration(seconds: 20));
-
-      Map<String, dynamic>? body;
-      try {
-        body = jsonDecode(response.body) as Map<String, dynamic>?;
-      } catch (_) {
-        body = null;
-      }
-
-      final isOk = response.statusCode >= 200 && response.statusCode < 300;
-      final result = body?['result'] as Map<String, dynamic>?;
-
-      if (isOk && result != null) {
-        final uid = result['uid'] as String?;
-        final verifiedLogin = result['verifiedLogin'] as bool? ?? false;
-        final verifyError = result['verifyError'] as String?;
-        if (mounted) {
-          setState(
-            () => _patient = PatientRecord(
-              id: _patient.id,
-              name: _patient.name,
-              email: _patient.email,
-              phone: _patient.phone,
-              photoUrl: _patient.photoUrl,
-              adminSetPassword: newPassword,
-            ),
-          );
-          if (verifiedLogin) {
-            _showMessage('เปลี่ยนรหัสผ่านสำเร็จ และทดสอบเข้าสู่ระบบด้วยรหัสใหม่แล้วได้จริง');
-          } else {
-            _showErrorDialog(
-              'ตั้งรหัสผ่านในระบบยืนยันตัวตนสำเร็จ (uid: $uid) '
-              'แต่ทดสอบเข้าสู่ระบบด้วยรหัสใหม่ไม่ผ่าน\n\n'
-              'เหตุผล: $verifyError\n\n'
-              'แปลว่าบัญชีที่ถูกเปลี่ยนรหัสอาจไม่ใช่บัญชีเดียวกับที่ผู้ป่วยใช้ล็อกอินจริง',
-            );
-          }
-        }
-      } else {
-        final error = body?['error'] as Map<String, dynamic>?;
-        if (mounted) {
-          _showErrorDialog(
-            'เปลี่ยนรหัสผ่านไม่สำเร็จ\n\n'
-            'HTTP ${response.statusCode}\n'
-            'status: ${error?['status']}\n'
-            'message: ${error?['message'] ?? response.body}',
-          );
-        }
-      }
-    } catch (error) {
-      if (mounted) _showErrorDialog('เปลี่ยนรหัสผ่านไม่สำเร็จ\n\n$error');
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  void _showErrorDialog(String message) {
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('เกิดข้อผิดพลาด'),
-        content: SingleChildScrollView(
-          child: SelectableText(message),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('ปิด'),
-          ),
-        ],
-      ),
-    );
   }
 
   Future<void> _deleteAccount() async {
@@ -1864,49 +1718,21 @@ class _PatientAccountPageState extends State<PatientAccountPage> {
                     label: 'เบอร์โทร',
                     value: _patient.phone.isEmpty ? '-' : _patient.phone,
                   ),
-                  const SizedBox(height: 10),
-                  _DetailField(
-                    label: 'รหัสผ่านปัจจุบัน',
-                    value: _patient.adminSetPassword.isEmpty
-                        ? 'ไม่ทราบ (ผู้ป่วยตั้งเอง)'
-                        : _patient.adminSetPassword,
-                  ),
                 ],
               ),
             ),
             const SizedBox(height: 24),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _saving ? null : _editPatient,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xff9be3e1),
-                      foregroundColor: const Color(0xff114d58),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                    ),
-                    child: const Text('แก้ไข'),
-                  ),
+            ElevatedButton(
+              onPressed: _saving ? null : _editPatient,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xff9be3e1),
+                foregroundColor: const Color(0xff114d58),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _saving ? null : _changePasswordDirectly,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xff9be3e1),
-                      foregroundColor: const Color(0xff114d58),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                    ),
-                    child: const Text('เปลี่ยนรหัสผ่าน'),
-                  ),
-                ),
-              ],
+                padding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+              child: const Text('แก้ไข'),
             ),
             const SizedBox(height: 16),
             SizedBox(
@@ -1927,84 +1753,6 @@ class _PatientAccountPageState extends State<PatientAccountPage> {
           ],
         ),
       ),
-    );
-  }
-}
-
-/// Owns its own controllers (disposed in its own [State.dispose]) rather
-/// than ones created and manually disposed by the caller right after
-/// `showDialog` returns — disposing them immediately on that return can
-/// race the dialog's still-animating exit transition and crash the
-/// framework with an "InheritedElement._dependents.isEmpty" assertion.
-class _ChangePasswordDialog extends StatefulWidget {
-  const _ChangePasswordDialog();
-
-  @override
-  State<_ChangePasswordDialog> createState() => _ChangePasswordDialogState();
-}
-
-class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
-  final _formKey = GlobalKey<FormState>();
-  final _passwordController = TextEditingController();
-  final _confirmController = TextEditingController();
-
-  @override
-  void dispose() {
-    _passwordController.dispose();
-    _confirmController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('ตั้งรหัสผ่านใหม่'),
-      content: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextFormField(
-              controller: _passwordController,
-              obscureText: true,
-              decoration: const InputDecoration(labelText: 'รหัสผ่านใหม่'),
-              validator: (value) {
-                if (value == null || value.length < 6) {
-                  return 'รหัสผ่านควรมีอย่างน้อย 6 ตัวอักษร';
-                }
-                return null;
-              },
-            ),
-            TextFormField(
-              controller: _confirmController,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'ยืนยันรหัสผ่านใหม่',
-              ),
-              validator: (value) {
-                if (value != _passwordController.text) {
-                  return 'รหัสผ่านไม่ตรงกัน';
-                }
-                return null;
-              },
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('ยกเลิก'),
-        ),
-        ElevatedButton(
-          onPressed: () {
-            if (_formKey.currentState!.validate()) {
-              Navigator.of(context).pop(_passwordController.text);
-            }
-          },
-          child: const Text('เปลี่ยนรหัสผ่าน'),
-        ),
-      ],
     );
   }
 }

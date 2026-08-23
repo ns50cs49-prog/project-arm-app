@@ -15,7 +15,7 @@ class AppointmentPage extends StatelessWidget {
     final date = dateRaw != null ? DateTime.tryParse(dateRaw) : null;
     final dateText = date != null ? '${date.day} ${_thaiMonth(date.month)} ${date.year + 543}' : 'ไม่ระบุวันที่';
     final time = data?['time']?.toString() ?? 'ไม่ระบุเวลา';
-    final location = data?['location']?.toString() ?? 'Arm care Physical Therapy Clinic';
+    final location = data?['location']?.toString() ?? 'ARM ReMotion Physical Therapy Clinic';
     final doctorName = data?['doctorName']?.toString() ?? 'ไม่ระบุแพทย์';
     final displayName = (data?['displayName'] as String?)?.trim();
     final email = (data?['email'] as String?)?.trim();

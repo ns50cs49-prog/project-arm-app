@@ -310,34 +310,15 @@ class _Brand extends StatelessWidget {
       SizedBox(
         height: 86,
         width: 86,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            Container(
-              width: 68,
-              height: 68,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: const Color(0xff2eb5bd), width: 1.4),
-              ),
-            ),
-            const Icon(
-              Icons.accessibility_new_rounded,
-              size: 70,
-              color: Color(0xff13aeb7),
-            ),
-            const Positioned(
-              top: 0,
-              child: CircleAvatar(
-                radius: 7,
-                backgroundColor: Color(0xff159fa9),
-              ),
-            ),
-          ],
+        child: ClipOval(
+          child: Image.asset(
+            'assets/icon/app_icon.png',
+            fit: BoxFit.cover,
+          ),
         ),
       ),
       const Text(
-        'Arm care',
+        'ARM ReMotion',
         style: TextStyle(
           fontSize: 27,
           height: 1,
@@ -347,7 +328,7 @@ class _Brand extends StatelessWidget {
       ),
       const SizedBox(height: 4),
       const Text(
-        'ออมรักษาสุขภาพบ้านคำน้อย',
+        'ระบบเช็คสถนาะเครื่องและจองคิว',
         style: TextStyle(
           fontSize: 9.5,
           fontWeight: FontWeight.w700,

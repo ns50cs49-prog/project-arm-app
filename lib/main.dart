@@ -12,9 +12,22 @@ Future<FirebaseApp> initializeFirebase() async {
     return Firebase.app();
   }
 
-  return Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  try {
+    return await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } on FirebaseException catch (error) {
+    // On Android, the google-services Gradle plugin auto-registers the
+    // "[DEFAULT]" Firebase app natively before Dart runs. On a cold start
+    // that can race past the `Firebase.apps.isNotEmpty` check above, so
+    // `initializeApp` still gets called and throws `duplicate-app` even
+    // though the app is really already initialized — in that case just use
+    // the app native side already set up instead of crashing.
+    if (error.code == 'duplicate-app') {
+      return Firebase.app();
+    }
+    rethrow;
+  }
 }
 
 Future<void> main() async {
@@ -31,7 +44,7 @@ class QueueApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'ARM Physical Therapy',
+      title: 'ARM ReMotion',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
